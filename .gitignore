@@ -5,3 +5,4 @@ target/
 .settings/
 .project
 .classpath
+/lib/mysql-connector-j-*.jar

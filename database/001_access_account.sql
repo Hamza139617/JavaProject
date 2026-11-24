@@ -1,0 +1,21 @@
+CREATE DATABASE IF NOT EXISTS osl_engine CHARACTER SET utf8mb4;
+USE osl_engine;
+
+CREATE TABLE IF NOT EXISTS user_accounts (
+    account_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,
+    full_name VARCHAR(120) NOT NULL,
+    phone VARCHAR(13) CHARACTER SET ascii NOT NULL,
+    password_hash VARCHAR(180) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    role ENUM('RETAILER', 'WHOLESALER', 'ADMINISTRATOR') NOT NULL,
+    account_status ENUM('ACTIVE', 'SUSPENDED', 'REMOVED') NOT NULL DEFAULT 'ACTIVE',
+    failed_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    locked_until_ms BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS businesses (
+    business_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    account_id BIGINT NOT NULL UNIQUE,
+    business_name VARCHAR(120) NOT NULL,
+    CONSTRAINT fk_business_account FOREIGN KEY (account_id) REFERENCES user_accounts(account_id)
+) ENGINE=InnoDB;
