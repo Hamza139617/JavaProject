@@ -6,8 +6,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Properties;
+import osl.bl.AccountService.Session;
 
 final class MySqlDatabase {
     private MySqlDatabase() {}
@@ -79,6 +81,43 @@ final class MySqlDatabase {
                 }
                 throw failure;
             }
+        }
+    }
+
+    enum WorkspaceLock {
+        NONE(""), SHARED(" FOR SHARE"), EXCLUSIVE(" FOR UPDATE");
+
+        private final String clause;
+        WorkspaceLock(String clause) {
+            this.clause = clause;
+        }
+    }
+
+    static long workspace(Connection connection, Session session, WorkspaceLock lock) throws SQLException {
+        String query = """
+                SELECT b.business_id FROM businesses b
+                JOIN user_accounts a ON a.account_id = b.account_id
+                WHERE b.account_id = ? AND a.account_status = 'ACTIVE' AND a.role = ?
+                  AND a.role IN ('RETAILER', 'WHOLESALER')
+                """ + lock.clause;
+        try (var statement = connection.prepareStatement(query)) {
+            statement.setLong(1, session.accountId());
+            statement.setString(2, session.role().name());
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new SQLException("The business workspace is unavailable.", "OSL04");
+                }
+                return rows.getLong("business_id");
+            }
+        }
+    }
+
+    static long generatedId(ResultSet keys) throws SQLException {
+        try (keys) {
+            if (!keys.next()) {
+                throw new SQLException("The database did not return the record ID.");
+            }
+            return keys.getLong(1);
         }
     }
 }

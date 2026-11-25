@@ -116,11 +116,7 @@ public final class StockService {
             throw new StockException("Choose a product from your catalog.");
         }
 
-        BigDecimal quantity = decimal(input.quantity(), product.unit().quantityScale, 12,
-                "Enter a positive quantity. Use whole pieces or cartons, or up to three decimal places for kg.");
-        if (quantity.signum() <= 0) {
-            throw new StockException("Quantity must be greater than zero.");
-        }
+        BigDecimal quantity = quantity(product.unit(), input.quantity());
         BigDecimal cost = decimal(input.cost(), 2, 11,
                 "Enter a unit cost in PKR with up to two decimal places.");
         LocalDate expiry = parseExpiry(input.expiry(), product.requiresExpiry(), LocalDate.now(clock));
@@ -203,7 +199,16 @@ public final class StockService {
         return expiry;
     }
 
-    private static BigDecimal decimal(String value, int scale, int wholeDigits, String error) {
+    static BigDecimal quantity(Unit unit, String value) {
+        BigDecimal quantity = decimal(value, unit.quantityScale, 12,
+                "Enter a positive quantity. Use whole pieces or cartons, or up to three decimal places for kg.");
+        if (quantity.signum() <= 0) {
+            throw new StockException("Quantity must be greater than zero.");
+        }
+        return quantity;
+    }
+
+    static BigDecimal decimal(String value, int scale, int wholeDigits, String error) {
         String clean = value.strip();
         String decimalPart = scale == 0 ? "" : "(?:\\.[0-9]{1," + scale + "})?";
         if (!clean.matches("[0-9]{1," + wholeDigits + "}" + decimalPart)) {

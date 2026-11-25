@@ -14,12 +14,13 @@ import osl.bl.StockService.Lot;
 import osl.bl.StockService.Product;
 import osl.bl.StockService.Receipt;
 import osl.bl.StockService.Unit;
+import osl.db.MySqlDatabase.WorkspaceLock;
 
 public final class MySqlStock implements StockRepository {
     @Override
     public List<Entry> load(Session session) throws SQLException {
         try (Connection connection = MySqlDatabase.open()) {
-            long business = workspace(connection, session, false);
+            long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.NONE);
             try (var query = connection.prepareStatement("""
                     SELECT p.product_id, p.product_name, p.unit, p.requires_expiry,
                            l.lot_id, l.quantity, l.unit_cost, l.expiry_date, l.source_name
@@ -32,12 +33,7 @@ public final class MySqlStock implements StockRepository {
                 try (var rows = query.executeQuery()) {
                     List<Entry> results = new ArrayList<>();
                     while (rows.next()) {
-                        Product product = product(rows);
-                        long id = rows.getLong("lot_id");
-                        Lot lot = rows.wasNull() ? null : new Lot(id, rows.getBigDecimal("quantity"),
-                                rows.getBigDecimal("unit_cost"), rows.getObject("expiry_date", LocalDate.class),
-                                rows.getString("source_name"));
-                        results.add(new Entry(product, lot));
+                        results.add(entry(rows));
                     }
                     return results;
                 }
@@ -48,7 +44,7 @@ public final class MySqlStock implements StockRepository {
     @Override
     public long addProduct(Session session, String name, Unit unit, boolean requiresExpiry) throws SQLException {
         return MySqlDatabase.transaction(connection -> {
-            long business = workspace(connection, session, true);
+            long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.SHARED);
             try (var insert = connection.prepareStatement("""
                     INSERT INTO products (business_id, product_name, unit, requires_expiry)
                     VALUES (?, ?, ?, ?)
@@ -58,7 +54,7 @@ public final class MySqlStock implements StockRepository {
                 insert.setString(3, unit.name());
                 insert.setBoolean(4, requiresExpiry);
                 insert.executeUpdate();
-                return generatedId(insert.getGeneratedKeys());
+                return MySqlDatabase.generatedId(insert.getGeneratedKeys());
             }
         });
     }
@@ -66,7 +62,7 @@ public final class MySqlStock implements StockRepository {
     @Override
     public long receive(Session session, Product product, Receipt receipt) throws SQLException {
         return MySqlDatabase.transaction(connection -> {
-            long business = workspace(connection, session, true);
+            long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.SHARED);
             if (!matchesProduct(connection, business, product)) {
                 return 0L;
             }
@@ -81,7 +77,7 @@ public final class MySqlStock implements StockRepository {
                 insert.setObject(4, receipt.expiry());
                 insert.setString(5, receipt.source());
                 insert.executeUpdate();
-                lot = generatedId(insert.getGeneratedKeys());
+                lot = MySqlDatabase.generatedId(insert.getGeneratedKeys());
             }
             try (var move = connection.prepareStatement("""
                     INSERT INTO stock_movements (lot_id, quantity_delta, reason)
@@ -110,36 +106,17 @@ public final class MySqlStock implements StockRepository {
         }
     }
 
+    static Entry entry(ResultSet row) throws SQLException {
+        Product product = product(row);
+        long id = row.getLong("lot_id");
+        Lot lot = row.wasNull() ? null : new Lot(id, row.getBigDecimal("quantity"),
+                row.getBigDecimal("unit_cost"), row.getObject("expiry_date", LocalDate.class),
+                row.getString("source_name"));
+        return new Entry(product, lot);
+    }
+
     private static Product product(ResultSet row) throws SQLException {
         return new Product(row.getLong("product_id"), row.getString("product_name"),
                 Unit.valueOf(row.getString("unit")), row.getBoolean("requires_expiry"));
-    }
-
-    private static long workspace(Connection connection, Session session, boolean lock) throws SQLException {
-        String query = """
-                SELECT b.business_id FROM businesses b
-                JOIN user_accounts a ON a.account_id = b.account_id
-                WHERE b.account_id = ? AND a.account_status = 'ACTIVE' AND a.role = ?
-                  AND a.role IN ('RETAILER', 'WHOLESALER')
-                """ + (lock ? " FOR SHARE" : "");
-        try (var statement = connection.prepareStatement(query)) {
-            statement.setLong(1, session.accountId());
-            statement.setString(2, session.role().name());
-            try (var rows = statement.executeQuery()) {
-                if (!rows.next()) {
-                    throw new SQLException("The stock workspace is unavailable.", "OSL04");
-                }
-                return rows.getLong("business_id");
-            }
-        }
-    }
-
-    private static long generatedId(ResultSet keys) throws SQLException {
-        try (keys) {
-            if (!keys.next()) {
-                throw new SQLException("The database did not return a stock record ID.");
-            }
-            return keys.getLong(1);
-        }
     }
 }

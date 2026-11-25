@@ -30,8 +30,12 @@ import osl.bl.AccountService.AccountException;
 import osl.bl.AccountService.Field;
 import osl.bl.AccountService.Role;
 import osl.bl.AccountService.Session;
+import osl.bl.SalesPerformanceService;
+import osl.bl.SalesService;
 import osl.bl.StockService;
 import osl.db.MySqlAccounts;
+import osl.db.MySqlSales;
+import osl.db.MySqlSalesPerformance;
 import osl.db.MySqlStock;
 
 public class OslApplication extends Application {
@@ -40,6 +44,8 @@ public class OslApplication extends Application {
     private static final String FIELD_ERROR = INPUT_STYLE + "-fx-border-color: #a84835;";
     private final AccountService accounts = new AccountService(new MySqlAccounts());
     private final StockService stocks = new StockService(new MySqlStock());
+    private final SalesService sales = new SalesService(new MySqlSales());
+    private final SalesPerformanceService performance = new SalesPerformanceService(new MySqlSalesPerformance());
     private Stage stage;
     private StackPane root;
     private GridPane accountCard;
@@ -188,6 +194,12 @@ public class OslApplication extends Application {
             Button stock = primary("Manage stock");
             stock.setOnAction(event -> showStock());
             form.body.getChildren().add(stock);
+            Button sale = primary("Record sale");
+            sale.setOnAction(event -> showSale());
+            form.body.getChildren().add(sale);
+            Button analysis = primary("Sales performance");
+            analysis.setOnAction(event -> showSalesPerformance());
+            form.body.getChildren().add(analysis);
         }
         Button edit = primary("Edit profile");
         edit.setOnAction(event -> showProfile());
@@ -199,6 +211,15 @@ public class OslApplication extends Application {
     private void showStock() {
         root.getChildren().setAll(new StockView(stocks, session, stage, () -> showDashboard(null),
                 working -> busy = working));
+    }
+
+    private void showSale() {
+        root.getChildren().setAll(new SaleView(stocks, sales, session, stage, () -> showDashboard(null),
+                working -> busy = working));
+    }
+
+    private void showSalesPerformance() {
+        root.getChildren().setAll(new SalesPerformanceView(performance, session, () -> showDashboard(null)));
     }
 
     private void showProfile() {
