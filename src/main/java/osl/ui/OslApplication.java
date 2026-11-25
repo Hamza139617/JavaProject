@@ -33,10 +33,12 @@ import osl.bl.AccountService.Session;
 import osl.bl.SalesPerformanceService;
 import osl.bl.SalesService;
 import osl.bl.StockService;
+import osl.bl.WholesalerDirectory;
 import osl.db.MySqlAccounts;
 import osl.db.MySqlSales;
 import osl.db.MySqlSalesPerformance;
 import osl.db.MySqlStock;
+import osl.db.MySqlWholesalerDirectory;
 
 public class OslApplication extends Application {
     private static final String INPUT_STYLE = "-fx-background-radius: 8; -fx-border-radius: 8;"
@@ -46,6 +48,7 @@ public class OslApplication extends Application {
     private final StockService stocks = new StockService(new MySqlStock());
     private final SalesService sales = new SalesService(new MySqlSales());
     private final SalesPerformanceService performance = new SalesPerformanceService(new MySqlSalesPerformance());
+    private final WholesalerDirectory directory = new WholesalerDirectory(new MySqlWholesalerDirectory());
     private Stage stage;
     private StackPane root;
     private GridPane accountCard;
@@ -201,6 +204,15 @@ public class OslApplication extends Application {
             analysis.setOnAction(event -> showSalesPerformance());
             form.body.getChildren().add(analysis);
         }
+        if (session.role() == Role.RETAILER) {
+            Button search = primary("Search wholesalers");
+            search.setOnAction(event -> showWholesalers());
+            form.body.getChildren().add(search);
+        } else if (session.role() == Role.WHOLESALER) {
+            Button publicProfile = primary("Public wholesaler profile");
+            publicProfile.setOnAction(event -> showPublicProfile());
+            form.body.getChildren().add(publicProfile);
+        }
         Button edit = primary("Edit profile");
         edit.setOnAction(event -> showProfile());
         form.body.getChildren().addAll(edit, link("Sign out", () -> showLogin("", "", false)));
@@ -220,6 +232,16 @@ public class OslApplication extends Application {
 
     private void showSalesPerformance() {
         root.getChildren().setAll(new SalesPerformanceView(performance, session, () -> showDashboard(null)));
+    }
+
+    private void showWholesalers() {
+        root.getChildren().setAll(new WholesalerSearchView(directory, session, stage, () -> showDashboard(null),
+                working -> busy = working));
+    }
+
+    private void showPublicProfile() {
+        root.getChildren().setAll(new PublicWholesalerProfileView(directory, session, stage, () -> showDashboard(null),
+                working -> busy = working));
     }
 
     private void showProfile() {
