@@ -44,9 +44,6 @@ public final class WholesalerDirectory {
     public record ProfileSettings(boolean published, String city, String address, String description,
                                   boolean showPhone) {}
 
-    public record CatalogListing(long productId, String product, Unit unit, boolean listed, String category,
-                                 BigDecimal rate, Instant updatedAt) {}
-
     public static final class DirectoryException extends RuntimeException {
         public DirectoryException(String message) { super(message); }
     }
@@ -74,11 +71,6 @@ public final class WholesalerDirectory {
         return repository.settings(session);
     }
 
-    public List<CatalogListing> catalog(Session session) throws SQLException {
-        require(session, Role.WHOLESALER);
-        return repository.catalog(session);
-    }
-
     public void saveProfile(Session session, ProfileSettings settings) throws SQLException {
         require(session, Role.WHOLESALER);
         String city = text(settings.city(), 100, "City");
@@ -88,22 +80,6 @@ public final class WholesalerDirectory {
         repository.saveProfile(session, new ProfileSettings(settings.published(), city,
                 text(settings.address(), 200, "Public address"), text(settings.description(), 1000, "About"),
                 settings.showPhone()));
-    }
-
-    public void saveListing(Session session, long productId, String category, String listedRate) throws SQLException {
-        require(session, Role.WHOLESALER);
-        String label = text(category, 80, "Category");
-        if (label.isEmpty()) throw new DirectoryException("Enter a category for this stock type.");
-        if (!repository.saveListing(session, productId, label, rate(listedRate))) {
-            throw new DirectoryException("This product is no longer in your catalog.");
-        }
-    }
-
-    public void unlist(Session session, long productId) throws SQLException {
-        require(session, Role.WHOLESALER);
-        if (!repository.unlist(session, productId)) {
-            throw new DirectoryException("This stock type is no longer listed.");
-        }
     }
 
     public void report(Session session, long businessId, long productId, ReportReason reason, String note)

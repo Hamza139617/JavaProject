@@ -38,7 +38,7 @@ public final class StockService {
         }
     }
 
-    public record Product(long id, String name, Unit unit, boolean requiresExpiry) {
+    public record Product(long id, String name, Unit unit, boolean requiresExpiry, BigDecimal sellingPrice, boolean archived) {
         @Override
         public String toString() {
             return name + " (" + unit + ")";
@@ -92,23 +92,7 @@ public final class StockService {
                 }
             }
         });
-        return new StockBook(List.copyOf(products.keySet()), List.copyOf(lines));
-    }
-
-    public long addProduct(Session session, String productName, Unit unit, boolean requiresExpiry) throws SQLException {
-        requireBusiness(session);
-        if (unit == null) {
-            throw new StockException("Choose a stock unit.");
-        }
-        String name = required(productName, "Enter a product name of up to 120 characters.");
-        try {
-            return repository.addProduct(session, name, unit, requiresExpiry);
-        } catch (SQLException failure) {
-            if (failure.getErrorCode() == 1062) {
-                throw new StockException("This product and unit are already in your catalog.");
-            }
-            throw failure;
-        }
+        return new StockBook(products.keySet().stream().filter(product -> !product.archived()).toList(), List.copyOf(lines));
     }
 
     public Receipt prepare(Product product, ReceiptInput input) {
@@ -166,7 +150,10 @@ public final class StockService {
         }
 
         String status;
-        if (onHand.signum() == 0) {
+        if (product.archived()) {
+            status = "Archived";
+            available = BigDecimal.ZERO;
+        } else if (onHand.signum() == 0) {
             status = "Out of stock";
         } else if (available.signum() == 0) {
             status = "Expired";

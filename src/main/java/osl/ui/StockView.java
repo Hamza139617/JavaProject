@@ -16,7 +16,6 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar.ButtonData;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
@@ -38,7 +37,6 @@ import osl.bl.StockService.Receipt;
 import osl.bl.StockService.ReceiptInput;
 import osl.bl.StockService.StockException;
 import osl.bl.StockService.StockLine;
-import osl.bl.StockService.Unit;
 
 final class StockView extends VBox {
     private static final String ACCENT = "-fx-background-color: #1d604a; -fx-text-fill: white;"
@@ -58,7 +56,7 @@ final class StockView extends VBox {
     private final Label status = new Label();
     private List<Product> catalog = List.of();
 
-    StockView(StockService stocks, Session session, Window owner, Runnable back, Consumer<Boolean> setBusy) {
+    StockView(StockService stocks, Session session, Window owner, Runnable back, Runnable manageProducts, Consumer<Boolean> setBusy) {
         this.stocks = stocks;
         this.session = session;
         this.owner = owner;
@@ -78,9 +76,9 @@ final class StockView extends VBox {
         subtitle.setWrapText(true);
         subtitle.setStyle("-fx-text-fill: #53675e;");
         Button refresh = button("Refresh", false, () -> reload(selectedProductId(), selectedLotId(), ""));
-        Button addProduct = button("Add product", false, this::showAddProduct);
+        Button catalog = button("Manage products", false, manageProducts);
         receive = button(retailer ? "Receive stock" : "Receive new stock", true, this::showReceive);
-        HBox actions = new HBox(9, refresh, addProduct, receive);
+        HBox actions = new HBox(9, refresh, catalog, receive);
         actions.setAlignment(Pos.CENTER_RIGHT);
         VBox heading = new VBox(4, title, subtitle);
         HBox header = bar(heading, actions);
@@ -170,32 +168,10 @@ final class StockView extends VBox {
                     break;
                 }
             }
-            String empty = catalog.isEmpty() ? "Add a product to start receiving stock." : "";
+            String empty = catalog.isEmpty() ? "Add an active product in Manage Products to start receiving stock." : "";
             showStatus(message.isEmpty() ? empty : message, false);
         }, failure -> showStatus(errorMessage(message.isEmpty() ? "Could not load stock."
                 : message + " Could not refresh stock.", failure), true));
-    }
-
-    private void showAddProduct() {
-        ButtonType add = new ButtonType("Add product", ButtonData.OK_DONE);
-        Dialog<ButtonType> dialog = dialog("Add a catalog product", add);
-        TextField name = new TextField();
-        name.setPromptText("e.g. Biscuits");
-        ComboBox<Unit> unit = new ComboBox<>();
-        unit.getItems().setAll(Unit.values());
-        unit.setPromptText("Choose a unit");
-        CheckBox expiry = new CheckBox("Requires an expiry date");
-        Label error = errorLabel();
-        dialog.getDialogPane().setContent(new VBox(10, field("Product name", name), field("Stock unit", unit), expiry, error));
-        dialog.getDialogPane().lookupButton(add).addEventFilter(ActionEvent.ACTION, event -> {
-            event.consume();
-            String value = name.getText();
-            Unit chosen = unit.getValue();
-            boolean requiresExpiry = expiry.isSelected();
-            save(dialog, error, () -> stocks.addProduct(session, value, chosen, requiresExpiry),
-                    product -> reload(product, 0, "Product added to your catalog."));
-        });
-        dialog.showAndWait();
     }
 
     private void showReceive() {
@@ -209,7 +185,7 @@ final class StockView extends VBox {
         product.getItems().setAll(catalog);
         product.setPromptText("Choose a catalog product");
         StockLine selected = inventory.getSelectionModel().getSelectedItem();
-        if (selected != null) {
+        if (selected != null && !selected.product().archived()) {
             product.setValue(selected.product());
         } else if (catalog.size() == 1) {
             product.setValue(catalog.getFirst());

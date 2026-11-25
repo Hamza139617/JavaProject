@@ -97,7 +97,15 @@ final class SaleView extends VBox {
         price.setPromptText("PKR");
         choices.setPromptText(retail() ? "Choose a product" : "Choose a whole stock");
         choices.setConverter(choiceLabels());
-        choices.valueProperty().addListener((ignored, old, selected) -> showStockDetails(selected));
+        choices.valueProperty().addListener((ignored, old, selected) -> {
+            showStockDetails(selected);
+            if (selected != null) {
+                BigDecimal catalogPrice = selected.product().sellingPrice();
+                BigDecimal defaultPrice = catalogPrice == null || retail() ? catalogPrice
+                        : catalogPrice.multiply(selected.available()).setScale(2, RoundingMode.HALF_UP);
+                price.setText(defaultPrice == null ? "" : defaultPrice.toPlainString());
+            }
+        });
         HBox schedule = new HBox(10, field("Sale date", date), field("Sale time", time));
         Label payment = new Label("Payment: Cash");
         payment.setStyle("-fx-text-fill: #53675e; -fx-padding: 5 0;");
@@ -239,6 +247,7 @@ final class SaleView extends VBox {
 
     private void load(String successMessage) {
         StockLine previous = choices.getValue();
+        String draftPrice = price.getText();
         message(successMessage.isEmpty() ? "Loading available stock…" : successMessage, false);
         run(() -> stocks.load(session), current -> {
             book = current;
@@ -248,7 +257,10 @@ final class SaleView extends VBox {
             if (previous != null) {
                 available.stream().filter(line -> retail()
                         ? line.product().id() == previous.product().id() : line.lot().id() == previous.lot().id())
-                        .findFirst().ifPresent(choices::setValue);
+                        .findFirst().ifPresent(line -> {
+                            choices.setValue(line);
+                            price.setText(draftPrice);
+                        });
             }
             String empty = available.isEmpty() ? "No sellable stock. Receive stock before recording a sale." : "";
             message(successMessage.isEmpty() ? empty : successMessage, false);

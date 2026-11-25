@@ -22,11 +22,11 @@ public final class MySqlStock implements StockRepository {
         try (Connection connection = MySqlDatabase.open()) {
             long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.NONE);
             try (var query = connection.prepareStatement("""
-                    SELECT p.product_id, p.product_name, p.unit, p.requires_expiry,
+                    SELECT p.product_id, p.product_name, p.unit, p.requires_expiry, p.selling_price, p.archived_at,
                            l.lot_id, l.quantity, l.unit_cost, l.expiry_date, l.source_name
                     FROM products p
                     LEFT JOIN stock_lots l ON l.product_id = p.product_id
-                    WHERE p.business_id = ?
+                    WHERE p.business_id = ? AND (p.archived_at IS NULL OR l.lot_id IS NOT NULL)
                     ORDER BY p.product_name, p.product_id, l.lot_id DESC
                     """)) {
                 query.setLong(1, business);
@@ -39,24 +39,6 @@ public final class MySqlStock implements StockRepository {
                 }
             }
         }
-    }
-
-    @Override
-    public long addProduct(Session session, String name, Unit unit, boolean requiresExpiry) throws SQLException {
-        return MySqlDatabase.transaction(connection -> {
-            long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.SHARED);
-            try (var insert = connection.prepareStatement("""
-                    INSERT INTO products (business_id, product_name, unit, requires_expiry)
-                    VALUES (?, ?, ?, ?)
-                    """, Statement.RETURN_GENERATED_KEYS)) {
-                insert.setLong(1, business);
-                insert.setString(2, name);
-                insert.setString(3, unit.name());
-                insert.setBoolean(4, requiresExpiry);
-                insert.executeUpdate();
-                return MySqlDatabase.generatedId(insert.getGeneratedKeys());
-            }
-        });
     }
 
     @Override
@@ -95,13 +77,15 @@ public final class MySqlStock implements StockRepository {
     private static boolean matchesProduct(Connection connection, long business, Product product)
             throws SQLException {
         try (var query = connection.prepareStatement("""
-                SELECT product_id, product_name, unit, requires_expiry
-                FROM products WHERE product_id = ? AND business_id = ? FOR SHARE
+                SELECT product_id, product_name, unit, requires_expiry, selling_price, archived_at
+                FROM products WHERE product_id = ? AND business_id = ? AND archived_at IS NULL FOR SHARE
                 """)) {
             query.setLong(1, product.id());
             query.setLong(2, business);
             try (var rows = query.executeQuery()) {
-                return rows.next() && product.equals(product(rows));
+                if (!rows.next()) return false;
+                Product current = product(rows);
+                return current.unit() == product.unit() && current.requiresExpiry() == product.requiresExpiry();
             }
         }
     }
@@ -117,6 +101,7 @@ public final class MySqlStock implements StockRepository {
 
     private static Product product(ResultSet row) throws SQLException {
         return new Product(row.getLong("product_id"), row.getString("product_name"),
-                Unit.valueOf(row.getString("unit")), row.getBoolean("requires_expiry"));
+                Unit.valueOf(row.getString("unit")), row.getBoolean("requires_expiry"),
+                row.getBigDecimal("selling_price"), row.getObject("archived_at") != null);
     }
 }

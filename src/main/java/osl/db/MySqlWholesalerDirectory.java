@@ -1,6 +1,5 @@
 package osl.db;
 
-import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -11,7 +10,6 @@ import java.util.List;
 import java.util.Optional;
 import osl.bl.AccountService.Session;
 import osl.bl.StockService.Unit;
-import osl.bl.WholesalerDirectory.CatalogListing;
 import osl.bl.WholesalerDirectory.ProfileSettings;
 import osl.bl.WholesalerDirectory.PublicListing;
 import osl.bl.WholesalerDirectory.PublicProfile;
@@ -45,7 +43,7 @@ public final class MySqlWholesalerDirectory implements WholesalerDirectoryReposi
                     SELECT p.business_id, p.product_id, p.product_name, l.category, l.rate, l.updated_at
                     FROM wholesaler_listings l
                     JOIN products p ON p.product_id = l.product_id
-                    WHERE l.is_listed = TRUE
+                    WHERE l.is_listed = TRUE AND p.archived_at IS NULL
                 ) visible ON visible.business_id = b.business_id
                 WHERE
                 """ + PUBLIC + """
@@ -110,7 +108,7 @@ public final class MySqlWholesalerDirectory implements WholesalerDirectoryReposi
         try (var query = connection.prepareStatement("""
                 SELECT p.product_id, p.product_name, p.unit, l.category, l.rate, l.updated_at
                 FROM products p JOIN wholesaler_listings l ON l.product_id = p.product_id
-                WHERE p.business_id = ? AND l.is_listed = TRUE
+                WHERE p.business_id = ? AND l.is_listed = TRUE AND p.archived_at IS NULL
                 ORDER BY p.product_name, p.product_id
                 """)) {
             query.setLong(1, business);
@@ -145,30 +143,6 @@ public final class MySqlWholesalerDirectory implements WholesalerDirectoryReposi
     }
 
     @Override
-    public List<CatalogListing> catalog(Session session) throws SQLException {
-        try (var connection = MySqlDatabase.open()) {
-            long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.NONE);
-            try (var query = connection.prepareStatement("""
-                    SELECT p.product_id, p.product_name, p.unit, COALESCE(l.is_listed, FALSE) AS is_listed,
-                           l.category, l.rate, l.updated_at
-                    FROM products p LEFT JOIN wholesaler_listings l ON l.product_id = p.product_id
-                    WHERE p.business_id = ? ORDER BY p.product_name, p.product_id
-                    """)) {
-                query.setLong(1, business);
-                try (var rows = query.executeQuery()) {
-                    List<CatalogListing> catalog = new ArrayList<>();
-                    while (rows.next()) {
-                        catalog.add(new CatalogListing(rows.getLong("product_id"), rows.getString("product_name"),
-                                Unit.valueOf(rows.getString("unit")), rows.getBoolean("is_listed"), rows.getString("category"),
-                                rows.getBigDecimal("rate"), time(rows, "updated_at")));
-                    }
-                    return catalog;
-                }
-            }
-        }
-    }
-
-    @Override
     public void saveProfile(Session session, ProfileSettings settings) throws SQLException {
         MySqlDatabase.transaction(connection -> {
             long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.SHARED);
@@ -192,48 +166,6 @@ public final class MySqlWholesalerDirectory implements WholesalerDirectoryReposi
     }
 
     @Override
-    public boolean saveListing(Session session, long product, String category, BigDecimal rate) throws SQLException {
-        return MySqlDatabase.transaction(connection -> {
-            long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.SHARED);
-            try (var query = connection.prepareStatement(
-                    "SELECT product_id FROM products WHERE business_id = ? AND product_id = ? FOR SHARE")) {
-                query.setLong(1, business);
-                query.setLong(2, product);
-                try (var row = query.executeQuery()) {
-                    if (!row.next()) return false;
-                }
-            }
-            try (var insert = connection.prepareStatement("""
-                    INSERT INTO wholesaler_listings (product_id, category, rate) VALUES (?, ?, ?) AS incoming
-                    ON DUPLICATE KEY UPDATE category = incoming.category, rate = incoming.rate, is_listed = TRUE,
-                        updated_at = CURRENT_TIMESTAMP(6)
-                    """)) {
-                insert.setLong(1, product);
-                insert.setString(2, category);
-                insert.setBigDecimal(3, rate);
-                insert.executeUpdate();
-                return true;
-            }
-        });
-    }
-
-    @Override
-    public boolean unlist(Session session, long product) throws SQLException {
-        return MySqlDatabase.transaction(connection -> {
-            long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.SHARED);
-            try (var update = connection.prepareStatement("""
-                    UPDATE wholesaler_listings l JOIN products p ON p.product_id = l.product_id
-                    SET l.is_listed = FALSE, l.updated_at = CURRENT_TIMESTAMP(6)
-                    WHERE p.business_id = ? AND l.product_id = ? AND l.is_listed = TRUE
-                    """)) {
-                update.setLong(1, business);
-                update.setLong(2, product);
-                return update.executeUpdate() == 1;
-            }
-        });
-    }
-
-    @Override
     public boolean report(Session session, long businessId, long productId, ReportReason reason, String comments)
             throws SQLException {
         return MySqlDatabase.transaction(connection -> {
@@ -242,7 +174,7 @@ public final class MySqlWholesalerDirectory implements WholesalerDirectoryReposi
                     JOIN products p ON p.business_id = b.business_id
                     JOIN wholesaler_listings l ON l.product_id = p.product_id
                     WHERE
-                    """ + PUBLIC + " AND b.business_id = ? AND l.product_id = ? AND l.is_listed = TRUE FOR SHARE";
+                    """ + PUBLIC + " AND b.business_id = ? AND l.product_id = ? AND l.is_listed = TRUE AND p.archived_at IS NULL FOR SHARE";
             try (var query = connection.prepareStatement(sql)) {
                 query.setLong(1, businessId);
                 query.setLong(2, productId);

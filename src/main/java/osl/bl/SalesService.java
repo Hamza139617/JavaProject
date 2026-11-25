@@ -135,7 +135,7 @@ public final class SalesService {
         validate(session, order);
         LocalDate today = LocalDate.now(clock);
         List<Entry> sellable = lots.stream()
-                .filter(e -> e.lot().quantity().signum() > 0
+                .filter(e -> !e.product().archived() && e.lot().quantity().signum() > 0
                         && (e.lot().expiry() == null || !e.lot().expiry().isBefore(today)))
                 .toList();
         if (order instanceof WholesaleOrder wholesale) {

@@ -30,11 +30,13 @@ import osl.bl.AccountService.AccountException;
 import osl.bl.AccountService.Field;
 import osl.bl.AccountService.Role;
 import osl.bl.AccountService.Session;
+import osl.bl.ProductService;
 import osl.bl.SalesPerformanceService;
 import osl.bl.SalesService;
 import osl.bl.StockService;
 import osl.bl.WholesalerDirectory;
 import osl.db.MySqlAccounts;
+import osl.db.MySqlProducts;
 import osl.db.MySqlSales;
 import osl.db.MySqlSalesPerformance;
 import osl.db.MySqlStock;
@@ -49,6 +51,7 @@ public class OslApplication extends Application {
     private final SalesService sales = new SalesService(new MySqlSales());
     private final SalesPerformanceService performance = new SalesPerformanceService(new MySqlSalesPerformance());
     private final WholesalerDirectory directory = new WholesalerDirectory(new MySqlWholesalerDirectory());
+    private final ProductService products = new ProductService(new MySqlProducts());
     private Stage stage;
     private StackPane root;
     private GridPane accountCard;
@@ -194,6 +197,9 @@ public class OslApplication extends Application {
         Form form = new Form(heading, subtitle);
         form.body.getChildren().add(label("Signed in as " + session.username(), "#53675e", 14, false));
         if (session.role() != Role.ADMINISTRATOR) {
+            Button catalog = primary("Manage products");
+            catalog.setOnAction(event -> showProducts("Back to workspace", () -> showDashboard(null)));
+            form.body.getChildren().add(catalog);
             Button stock = primary("Manage stock");
             stock.setOnAction(event -> showStock());
             form.body.getChildren().add(stock);
@@ -222,7 +228,7 @@ public class OslApplication extends Application {
 
     private void showStock() {
         root.getChildren().setAll(new StockView(stocks, session, stage, () -> showDashboard(null),
-                working -> busy = working));
+                () -> showProducts("Back to stock", this::showStock), working -> busy = working));
     }
 
     private void showSale() {
@@ -240,8 +246,12 @@ public class OslApplication extends Application {
     }
 
     private void showPublicProfile() {
-        root.getChildren().setAll(new PublicWholesalerProfileView(directory, session, stage, () -> showDashboard(null),
-                working -> busy = working));
+        root.getChildren().setAll(new PublicWholesalerProfileView(directory, session, () -> showDashboard(null),
+                () -> showProducts("Back to public profile", this::showPublicProfile), working -> busy = working));
+    }
+
+    private void showProducts(String backLabel, Runnable back) {
+        root.getChildren().setAll(new ProductView(products, session, stage, backLabel, back, working -> busy = working));
     }
 
     private void showProfile() {

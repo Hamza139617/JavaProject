@@ -62,11 +62,11 @@ public final class MySqlSales implements SalesRepository {
         }
 
         String sql = """
-                SELECT p.product_id, p.product_name, p.unit, p.requires_expiry,
+                SELECT p.product_id, p.product_name, p.unit, p.requires_expiry, p.selling_price, p.archived_at,
                        l.lot_id, l.quantity, l.unit_cost, l.expiry_date, l.source_name
                 FROM stock_lots l
                 JOIN products p ON p.product_id = l.product_id
-                WHERE p.business_id = ? AND l.quantity > 0 AND
+                WHERE p.business_id = ? AND p.archived_at IS NULL AND l.quantity > 0 AND
                 """ + restriction + " ORDER BY l.lot_id FOR UPDATE OF l";
         try (var query = connection.prepareStatement(sql)) {
             query.setLong(1, business);

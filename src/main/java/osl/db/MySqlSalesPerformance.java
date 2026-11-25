@@ -78,13 +78,16 @@ public final class MySqlSalesPerformance implements SalesPerformanceRepository {
 
     private static List<ItemMonth> itemMonths(Connection connection, long business, DateRange range) throws SQLException {
         String sql = """
-                SELECT l.product_id, MAX(i.product_name) AS product_name, i.unit,
+                SELECT l.product_id,
+                       CONCAT(MAX(i.product_name), IF(MAX(p.archived_at IS NOT NULL), ' (archived)', '')) AS product_name,
+                       i.unit,
                        EXTRACT(YEAR_MONTH FROM s.sold_at) AS month_key,
                        SUM(i.quantity) AS quantity, SUM(i.line_total) AS revenue,
                        SUM(i.line_cost) AS cost, MAX(s.sold_at) AS latest
                 FROM sales s
                 JOIN sale_items i ON i.sale_id = s.sale_id
                 JOIN stock_lots l ON l.lot_id = i.lot_id
+                JOIN products p ON p.product_id = l.product_id
                 """ + FILTER + " GROUP BY l.product_id, i.unit, month_key";
         try (var query = connection.prepareStatement(sql)) {
             bind(query, business, "RETAIL", range);
@@ -121,10 +124,14 @@ public final class MySqlSalesPerformance implements SalesPerformanceRepository {
 
     private static List<StockSale> stocks(Connection connection, long business, DateRange range) throws SQLException {
         String sql = """
-                SELECT i.lot_id, i.product_name, s.buyer_name, i.unit, i.quantity,
+                SELECT i.lot_id,
+                       CONCAT(i.product_name, IF(p.archived_at IS NOT NULL, ' (archived)', '')) AS product_name,
+                       s.buyer_name, i.unit, i.quantity,
                        s.sold_at, i.line_total, i.line_cost
                 FROM sales s
                 JOIN sale_items i ON i.sale_id = s.sale_id
+                JOIN stock_lots l ON l.lot_id = i.lot_id
+                JOIN products p ON p.product_id = l.product_id
                 """ + FILTER + " ORDER BY i.line_total DESC, s.sold_at DESC, i.lot_id DESC";
         try (var query = connection.prepareStatement(sql)) {
             bind(query, business, "WHOLESALE", range);
