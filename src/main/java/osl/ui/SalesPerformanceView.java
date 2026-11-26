@@ -1,5 +1,7 @@
 package osl.ui;
 
+import static osl.ui.DirectoryControls.actionRow;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.SQLException;
@@ -72,17 +74,14 @@ final class SalesPerformanceView extends VBox {
         this.service = service;
         this.session = session;
         retail = session.role() == Role.RETAILER;
-        setStyle("-fx-background-color: #fcfdfb; -fx-background-radius: 19;");
+        setStyle("-fx-background-color: #fcfdfb;");
         setSpacing(12);
         setPadding(new Insets(20));
         var title = text("Sales performance", "#19332a", 30, true);
         var role = text(retail ? "Retail · Item performance" : "Wholesale · Stock performance and growth",
                 "#53675e", 14, false);
-        filters = new HBox(10, field("Period", preset), field("From", from), field("To", to),
+        filters = actionRow(10, field("Period", preset), field("From", from), field("To", to),
                 button("Apply period", true, this::load));
-        filters.setAlignment(Pos.BOTTOM_LEFT);
-        from.setPrefWidth(145);
-        to.setPrefWidth(145);
         preset.getItems().setAll(Preset.values());
         preset.setValue(Preset.THIS_MONTH);
         DateRange initial = service.dates(Preset.THIS_MONTH);
@@ -157,7 +156,7 @@ final class SalesPerformanceView extends VBox {
     private void display(Report report) {
         var totals = report.totals();
         String countLabel = retail ? "Sales" : "Stocks sold";
-        HBox cards = new HBox(9, metric("Revenue", money(totals.revenue())), metric("Stock cost", money(totals.cost())),
+        HBox cards = actionRow(9, metric("Revenue", money(totals.revenue())), metric("Stock cost", money(totals.cost())),
                 metric("Gross profit", money(totals.profit())), metric("Gross margin", percent(totals.margin())),
                 metric(countLabel, Long.toString(totals.count())));
         DateRange prior = report.previous();
@@ -215,6 +214,7 @@ final class SalesPerformanceView extends VBox {
     private void itemHistory(ItemStats item) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(getScene().getWindow());
+        dialog.setResizable(true);
         dialog.setTitle("Item sales by month");
         dialog.setHeaderText(item.name() + " · " + item.unit());
         TableView<ItemMonth> table = table("No months with sales.", item.months());
@@ -223,8 +223,6 @@ final class SalesPerformanceView extends VBox {
         col(table, "Revenue", ItemMonth::revenue, SalesPerformanceView::money, 115);
         col(table, "Gross profit", ItemMonth::profit, SalesPerformanceView::money, 115);
         col(table, "Latest sale", ItemMonth::latest, TIME::format, 136);
-        table.setPrefHeight(265);
-        dialog.getDialogPane().setPrefWidth(621);
         dialog.getDialogPane().setContent(table);
         dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         dialog.show();
@@ -322,7 +320,7 @@ final class SalesPerformanceView extends VBox {
 
     private static <T> TableView<T> table(String empty, List<T> data) {
         TableView<T> table = new TableView<>();
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         table.setPlaceholder(new Label(empty));
         table.getItems().setAll(data);
         return table;
@@ -358,15 +356,14 @@ final class SalesPerformanceView extends VBox {
         box.setPadding(new Insets(10));
         box.setStyle("-fx-background-color: #e8f2ec; -fx-background-radius: 9;");
         box.setMaxWidth(Double.MAX_VALUE);
-        box.setPrefWidth(150);
         box.setMinWidth(0);
-        HBox.setHgrow(box, Priority.ALWAYS);
         return box;
     }
 
     private static VBox field(String name, Control control) {
         var label = new Label(name);
         label.setLabelFor(control);
+        control.setMaxWidth(Double.MAX_VALUE);
         return new VBox(4, label, control);
     }
 

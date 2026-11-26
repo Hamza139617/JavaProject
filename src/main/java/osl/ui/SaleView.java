@@ -1,5 +1,7 @@
 package osl.ui;
 
+import static osl.ui.DirectoryControls.actionRow;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.SQLException;
@@ -35,6 +37,8 @@ import javafx.stage.Window;
 import javafx.util.StringConverter;
 import osl.bl.AccountService.Role;
 import osl.bl.AccountService.Session;
+import osl.bl.CustomerService;
+import osl.bl.CustomerService.Contact;
 import osl.bl.SalesService;
 import osl.bl.SalesService.Order;
 import osl.bl.SalesService.Quote;
@@ -54,7 +58,11 @@ final class SaleView extends VBox {
     private static final String SECONDARY = "-fx-background-color: #e4f1e9; -fx-text-fill: #1d604a;"
             + "-fx-background-radius: 8; -fx-padding: 8 14;";
 
+    private record SaleInputs(StockBook book, List<Contact> customers) {}
+
     private final StockService stocks;
+    private final CustomerService customers;
+    private final ComboBox<Contact> customer = new ComboBox<>();
     private final SalesService sales;
     private final Session session;
     private final Window owner;
@@ -73,16 +81,17 @@ final class SaleView extends VBox {
     private Quote reviewed;
     private UUID request;
 
-    SaleView(StockService stocks, SalesService sales, Session session, Window owner,
+    SaleView(StockService stocks, SalesService sales, CustomerService customers, Session session, Window owner,
              Runnable back, Consumer<Boolean> setBusy) {
         this.stocks = stocks;
+        this.customers = customers;
         this.sales = sales;
         this.session = session;
         this.owner = owner;
         this.setBusy = setBusy;
         setSpacing(12);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #fcfdfb; -fx-background-radius: 19;");
+        setStyle("-fx-background-color: #fcfdfb;");
         Label title = new Label("Record sale");
         title.setStyle("-fx-text-fill: #19332a; -fx-font-size: 30px; -fx-font-weight: bold;");
         Label subtitle = new Label(retail() ? "Add the products sold and their quantities."
@@ -106,29 +115,35 @@ final class SaleView extends VBox {
                 price.setText(defaultPrice == null ? "" : defaultPrice.toPlainString());
             }
         });
-        HBox schedule = new HBox(10, field("Sale date", date), field("Sale time", time));
+        HBox schedule = actionRow(10, field("Sale date", date), field("Sale time", time));
         Label payment = new Label("Payment: Cash");
         payment.setStyle("-fx-text-fill: #53675e; -fx-padding: 5 0;");
         getChildren().addAll(bar(button("Back to workspace", false, back), new Label(session.businessName())),
                 bar(new VBox(2, title, subtitle), button("Refresh stock", false, () -> load(""))),
                 status, schedule);
         if (retail()) {
+            customer.getItems().setAll(List.of(Contact.WALK_IN));
+            customer.setValue(Contact.WALK_IN);
+            var customerField = field("Customer (optional)", customer);
+            HBox.setHgrow(customerField, Priority.ALWAYS);
+            schedule.getChildren().add(customerField);
             configureRetail();
         } else {
             buyer.setPromptText("Name of the retailer who bought this stock");
-            var selection = field("Wholesale stock", choices);
-            HBox.setHgrow(selection, Priority.ALWAYS);
-            getChildren().addAll(new HBox(10, selection, field("Total sale price (PKR)", price)),
-                    stockDetails, field("Retailer name", buyer));
+            var stockAndPrice = actionRow(10, field("Wholesale stock", choices), field("Total sale price (PKR)", price));
+            var retailer = field("Retailer name", buyer);
+            VBox.setVgrow(schedule, Priority.ALWAYS);
+            VBox.setVgrow(stockAndPrice, Priority.ALWAYS);
+            VBox.setVgrow(retailer, Priority.ALWAYS);
+            getChildren().addAll(stockAndPrice, stockDetails, retailer);
         }
-        getChildren().add(bar(payment, button("Review sale", true, this::review)));
+        getChildren().add(actionRow(10, payment, button("Review sale", true, this::review)));
         load("");
     }
 
     private void configureRetail() {
         cart.setPlaceholder(new Label("Add a product to start the sale."));
-        cart.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        cart.setPrefHeight(225);
+        cart.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         cart.setMinHeight(90);
         column("Product", row -> row.product().name());
         column("Quantity", row -> amount(row.quantity()) + " " + row.product().unit());
@@ -137,11 +152,9 @@ final class SaleView extends VBox {
         VBox.setVgrow(cart, Priority.ALWAYS);
 
         var selection = field("Product", choices);
-        HBox.setHgrow(selection, Priority.ALWAYS);
         quantity.setPromptText("Quantity sold");
         Button add = button("Add item", false, this::addItem);
-        HBox fields = new HBox(10, selection, field("Quantity", quantity), field("Unit price (PKR)", price), add);
-        fields.setAlignment(Pos.BOTTOM_LEFT);
+        HBox fields = actionRow(10, selection, field("Quantity", quantity), field("Unit price (PKR)", price), add);
         Button remove = button("Remove selected item", false, () -> {
             cart.getItems().remove(cart.getSelectionModel().getSelectedItem());
             updateTotal();
@@ -190,6 +203,9 @@ final class SaleView extends VBox {
                     + " · " + amount(quote.lines().getFirst().quantity()) + " "
                     + quote.lines().getFirst().product().unit() + "\n\n"
                 : "";
+        if (quote.order() instanceof RetailOrder retail && retail.customerId() != null) {
+            lines = "Customer: " + customer.getValue().name() + "\n\n";
+        }
         String summary = lines + "Revenue: " + money(quote.revenue())
                 + "\nStock cost: " + money(quote.cost())
                 + "\nGross profit: " + money(quote.profit());
@@ -216,6 +232,7 @@ final class SaleView extends VBox {
             quantity.clear();
             price.clear();
             buyer.clear();
+            if (retail()) customer.setValue(Contact.WALK_IN);
             resetTime();
             load("Sale #" + saved.saleId() + " recorded. Revenue " + money(saved.revenue())
                     + " · Gross profit " + money(saved.profit()) + ".");
@@ -238,7 +255,9 @@ final class SaleView extends VBox {
             throw new SaleException("Enter a valid sale date and time in HH:mm or HH:mm:ss.");
         }
         if (retail()) {
-            return new RetailOrder(soldAt, cart.getItems());
+            Contact selected = customer.getValue();
+            Long customerId = selected == null || selected.id() == 0 ? null : selected.id();
+            return new RetailOrder(soldAt, cart.getItems(), customerId);
         }
         StockLine selected = choices.getValue();
         if (selected == null) throw new SaleException("Choose the wholesale stock that was sold.");
@@ -249,9 +268,16 @@ final class SaleView extends VBox {
         StockLine previous = choices.getValue();
         String draftPrice = price.getText();
         message(successMessage.isEmpty() ? "Loading available stock…" : successMessage, false);
-        run(() -> stocks.load(session), current -> {
-            book = current;
-            List<StockLine> available = current.lines().stream().filter(row -> row.available().signum() > 0).toList();
+        Contact previousCustomer = customer.getValue();
+        run(() -> new SaleInputs(stocks.load(session), retail() ? customers.contacts(session) : List.of()), current -> {
+            book = current.book();
+            if (retail()) {
+                customer.getItems().setAll(List.of(Contact.WALK_IN));
+                customer.getItems().addAll(current.customers());
+                customer.setValue(previousCustomer == null ? Contact.WALK_IN : customer.getItems().stream()
+                        .filter(row -> row.id() == previousCustomer.id()).findFirst().orElse(Contact.WALK_IN));
+            }
+            List<StockLine> available = book.lines().stream().filter(row -> row.available().signum() > 0).toList();
             choices.getItems().setAll(available);
             choices.getSelectionModel().clearSelection();
             if (previous != null) {

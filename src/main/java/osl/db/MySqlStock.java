@@ -18,9 +18,10 @@ import osl.db.MySqlDatabase.WorkspaceLock;
 
 public final class MySqlStock implements StockRepository {
     @Override
-    public List<Entry> load(Session session) throws SQLException {
+    public StockData load(Session session) throws SQLException {
         try (Connection connection = MySqlDatabase.open()) {
             long business = MySqlDatabase.workspace(connection, session, WorkspaceLock.NONE);
+            var threshold = MySqlReplenishment.settings(connection, business).threshold();
             try (var query = connection.prepareStatement("""
                     SELECT p.product_id, p.product_name, p.unit, p.requires_expiry, p.selling_price, p.archived_at,
                            l.lot_id, l.quantity, l.unit_cost, l.expiry_date, l.source_name
@@ -35,7 +36,7 @@ public final class MySqlStock implements StockRepository {
                     while (rows.next()) {
                         results.add(entry(rows));
                     }
-                    return results;
+                    return new StockData(results, threshold);
                 }
             }
         }
@@ -48,33 +49,38 @@ public final class MySqlStock implements StockRepository {
             if (!matchesProduct(connection, business, product)) {
                 return 0L;
             }
-            long lot;
-            try (var insert = connection.prepareStatement("""
-                    INSERT INTO stock_lots (product_id, quantity, unit_cost, expiry_date, source_name)
-                    VALUES (?, ?, ?, ?, ?)
-                    """, Statement.RETURN_GENERATED_KEYS)) {
-                insert.setLong(1, product.id());
-                insert.setBigDecimal(2, receipt.quantity());
-                insert.setBigDecimal(3, receipt.unitCost());
-                insert.setObject(4, receipt.expiry());
-                insert.setString(5, receipt.source());
-                insert.executeUpdate();
-                lot = MySqlDatabase.generatedId(insert.getGeneratedKeys());
-            }
-            try (var move = connection.prepareStatement("""
-                    INSERT INTO stock_movements (lot_id, quantity_delta, reason)
-                    VALUES (?, ?, ?)
-                    """)) {
-                move.setLong(1, lot);
-                move.setBigDecimal(2, receipt.quantity());
-                move.setString(3, "Received stock");
-                move.executeUpdate();
-            }
-            return lot;
+            return insertReceipt(connection, product, receipt, "Received stock");
         });
     }
 
-    private static boolean matchesProduct(Connection connection, long business, Product product)
+    static long insertReceipt(Connection connection, Product product, Receipt receipt, String reason)
+            throws SQLException {
+        long lot;
+        try (var insert = connection.prepareStatement("""
+                INSERT INTO stock_lots (product_id, quantity, unit_cost, expiry_date, source_name)
+                VALUES (?, ?, ?, ?, ?)
+                """, Statement.RETURN_GENERATED_KEYS)) {
+            insert.setLong(1, product.id());
+            insert.setBigDecimal(2, receipt.quantity());
+            insert.setBigDecimal(3, receipt.unitCost());
+            insert.setObject(4, receipt.expiry());
+            insert.setString(5, receipt.source());
+            insert.executeUpdate();
+            lot = MySqlDatabase.generatedId(insert.getGeneratedKeys());
+        }
+        try (var move = connection.prepareStatement("""
+                INSERT INTO stock_movements (lot_id, quantity_delta, reason)
+                VALUES (?, ?, ?)
+                """)) {
+            move.setLong(1, lot);
+            move.setBigDecimal(2, receipt.quantity());
+            move.setString(3, reason);
+            move.executeUpdate();
+        }
+        return lot;
+    }
+
+    static boolean matchesProduct(Connection connection, long business, Product product)
             throws SQLException {
         try (var query = connection.prepareStatement("""
                 SELECT product_id, product_name, unit, requires_expiry, selling_price, archived_at
@@ -99,7 +105,7 @@ public final class MySqlStock implements StockRepository {
         return new Entry(product, lot);
     }
 
-    private static Product product(ResultSet row) throws SQLException {
+    static Product product(ResultSet row) throws SQLException {
         return new Product(row.getLong("product_id"), row.getString("product_name"),
                 Unit.valueOf(row.getString("unit")), row.getBoolean("requires_expiry"),
                 row.getBigDecimal("selling_price"), row.getObject("archived_at") != null);

@@ -117,7 +117,10 @@ public final class SalesPerformanceService {
     }
 
     public DateRange dates(Preset preset) {
-        LocalDate today = LocalDate.now(clock);
+        return dates(preset, LocalDate.now(clock));
+    }
+
+    static DateRange dates(Preset preset, LocalDate today) {
         YearMonth month = YearMonth.from(today);
         return switch (preset) {
             case TODAY -> new DateRange(today, today);
@@ -133,18 +136,23 @@ public final class SalesPerformanceService {
         if (session == null || (session.role() != Role.RETAILER && session.role() != Role.WHOLESALER)) {
             throw new IllegalArgumentException("Sales performance is available in retailer and wholesaler workspaces.");
         }
+        DateRange previous = comparisonRange(selected, LocalDate.now(clock));
+        var snapshot = repository.load(session, selected, previous);
+        Metrics totals = snapshot.monthly().stream().map(MonthSales::metrics).reduce(Metrics.ZERO, Metrics::plus);
+        return new Report(selected, previous, totals, snapshot.previous(), monthly(selected, snapshot.monthly()),
+                rank(snapshot.itemMonths()), List.copyOf(snapshot.stocks()), List.copyOf(snapshot.history()));
+    }
+
+    static DateRange comparisonRange(DateRange selected, LocalDate today) {
         if (selected.from() == null || selected.to() == null || selected.from().isAfter(selected.to())
-                || selected.from().getYear() < 1001 || selected.to().isAfter(LocalDate.now(clock))) {
+                || selected.from().getYear() < 1001 || selected.to().isAfter(today)) {
             throw new IllegalArgumentException("Choose a valid date range ending today or earlier.");
         }
         DateRange previous = selected.previous();
         if (previous.from().getYear() < 1000) {
             throw new IllegalArgumentException("Choose a shorter date range for comparison.");
         }
-        var snapshot = repository.load(session, selected, previous);
-        Metrics totals = snapshot.monthly().stream().map(MonthSales::metrics).reduce(Metrics.ZERO, Metrics::plus);
-        return new Report(selected, previous, totals, snapshot.previous(), monthly(selected, snapshot.monthly()),
-                rank(snapshot.itemMonths()), List.copyOf(snapshot.stocks()), List.copyOf(snapshot.history()));
+        return previous;
     }
 
     private static List<MonthlyRow> monthly(DateRange range, List<MonthSales> totals) {

@@ -132,6 +132,13 @@ public final class AccountService {
         return new LoginChange(new LoginResult(LoginStatus.SUCCESS, session(account)), 0, 0);
     }
 
+    public boolean isActive(Session current) throws SQLException {
+        return repository.find(current.accountId())
+                .filter(Account::active)
+                .filter(account -> account.role() == current.role())
+                .isPresent();
+    }
+
     public Session updateProfile(Session current, String fullName, String business, String phone,
                                  String currentPassword, String newPassword) throws SQLException {
         String name = name(fullName, Field.FULL_NAME, "full name");
@@ -177,7 +184,7 @@ public final class AccountService {
         return clean;
     }
 
-    private static String phone(String value) {
+    static String phone(String value) {
         String clean = value.replaceAll("\\s+", "");
         if (clean.matches("03[0-9]{9}")) {
             return "+92" + clean.substring(1);

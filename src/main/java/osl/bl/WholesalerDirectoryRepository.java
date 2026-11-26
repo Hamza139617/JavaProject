@@ -12,6 +12,7 @@ import osl.bl.WholesalerDirectory.Summary;
 
 public interface WholesalerDirectoryRepository {
     List<Summary> search(Session retailer, Search search) throws SQLException;
+    boolean hasPublishedProfiles(Session retailer) throws SQLException;
     Optional<PublicProfile> profile(Session retailer, long businessId) throws SQLException;
     ProfileSettings settings(Session wholesaler) throws SQLException;
     void saveProfile(Session wholesaler, ProfileSettings settings) throws SQLException;

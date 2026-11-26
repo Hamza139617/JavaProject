@@ -29,6 +29,10 @@ public final class MySqlSales implements SalesRepository {
             if (existing != null) {
                 return existing;
             }
+            if (preview.order() instanceof RetailOrder retail && retail.customerId() != null
+                    && !MySqlCustomers.belongsTo(connection, business, retail.customerId())) {
+                throw new SaleException("This customer is unavailable in your workspace.");
+            }
             Quote quote = review.apply(lockStock(connection, business, preview.order()));
             long sale = insertSale(connection, business, request, quote);
             saveLines(connection, sale, quote);
@@ -86,17 +90,18 @@ public final class MySqlSales implements SalesRepository {
     private static long insertSale(Connection connection, long business, UUID request, Quote quote) throws SQLException {
         boolean wholesale = quote.order() instanceof WholesaleOrder;
         try (var insert = connection.prepareStatement("""
-                INSERT INTO sales (business_id, request_key, sale_type, buyer_name, sold_at, revenue, total_cost, gross_profit)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO sales (business_id, request_key, sale_type, buyer_name, customer_id, sold_at, revenue, total_cost, gross_profit)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, Statement.RETURN_GENERATED_KEYS)) {
             insert.setLong(1, business);
             insert.setString(2, request.toString());
             insert.setString(3, wholesale ? "WHOLESALE" : "RETAIL");
             insert.setString(4, wholesale ? ((WholesaleOrder) quote.order()).buyer().strip() : null);
-            insert.setObject(5, quote.order().soldAt());
-            insert.setBigDecimal(6, quote.revenue());
-            insert.setBigDecimal(7, quote.cost());
-            insert.setBigDecimal(8, quote.profit());
+            insert.setObject(5, quote.order() instanceof RetailOrder retail ? retail.customerId() : null);
+            insert.setObject(6, quote.order().soldAt());
+            insert.setBigDecimal(7, quote.revenue());
+            insert.setBigDecimal(8, quote.cost());
+            insert.setBigDecimal(9, quote.profit());
             insert.executeUpdate();
             return MySqlDatabase.generatedId(insert.getGeneratedKeys());
         }

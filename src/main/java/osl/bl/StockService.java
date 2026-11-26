@@ -16,7 +16,6 @@ import osl.bl.AccountService.Role;
 import osl.bl.AccountService.Session;
 
 public final class StockService {
-    private static final BigDecimal LOW_LEVEL = BigDecimal.TEN;
     private static final int EXPIRY_WINDOW_DAYS = 30;
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
@@ -75,7 +74,8 @@ public final class StockService {
         requireBusiness(session);
         LocalDate today = LocalDate.now(clock);
         Map<Product, List<Lot>> products = new LinkedHashMap<>();
-        for (Entry entry : repository.load(session)) {
+        var snapshot = repository.load(session);
+        for (Entry entry : snapshot.entries()) {
             List<Lot> lots = products.computeIfAbsent(entry.product(), key -> new ArrayList<>());
             if (entry.lot() != null) {
                 lots.add(entry.lot());
@@ -85,10 +85,10 @@ public final class StockService {
         List<StockLine> lines = new ArrayList<>();
         products.forEach((product, lots) -> {
             if (session.role() == Role.RETAILER) {
-                lines.add(summarize(product, null, lots, today));
+                lines.add(summarize(product, null, lots, today, snapshot.lowThreshold()));
             } else {
                 for (Lot lot : lots) {
-                    lines.add(summarize(product, lot, List.of(lot), today));
+                    lines.add(summarize(product, lot, List.of(lot), today, snapshot.lowThreshold()));
                 }
             }
         });
@@ -122,7 +122,8 @@ public final class StockService {
         return date == null ? "—" : DATE.format(date);
     }
 
-    private static StockLine summarize(Product product, Lot lot, List<Lot> lots, LocalDate today) {
+    private static StockLine summarize(Product product, Lot lot, List<Lot> lots, LocalDate today,
+                                       BigDecimal lowThreshold) {
         BigDecimal onHand = BigDecimal.ZERO;
         BigDecimal available = BigDecimal.ZERO;
         LocalDate nearest = null;
@@ -158,7 +159,7 @@ public final class StockService {
         } else if (available.signum() == 0) {
             status = "Expired";
         } else {
-            boolean low = available.compareTo(LOW_LEVEL) <= 0;
+            boolean low = available.compareTo(lowThreshold) <= 0;
             boolean near = nearest != null && !nearest.isAfter(today.plusDays(EXPIRY_WINDOW_DAYS));
             status = low && near ? "Low stock · Near expiry"
                     : low ? "Low stock" : near ? "Near expiry" : "In stock";

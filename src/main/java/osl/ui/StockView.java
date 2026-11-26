@@ -1,5 +1,7 @@
 package osl.ui;
 
+import static osl.ui.DirectoryControls.actionRow;
+
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.List;
@@ -64,7 +66,7 @@ final class StockView extends VBox {
         retailer = session.role() == Role.RETAILER;
         setSpacing(14);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #fcfdfb; -fx-background-radius: 19;");
+        setStyle("-fx-background-color: #fcfdfb;");
 
         Button backButton = button("Back to workspace", false, back);
         Label business = new Label(session.businessName());
@@ -78,7 +80,7 @@ final class StockView extends VBox {
         Button refresh = button("Refresh", false, () -> reload(selectedProductId(), selectedLotId(), ""));
         Button catalog = button("Manage products", false, manageProducts);
         receive = button(retailer ? "Receive stock" : "Receive new stock", true, this::showReceive);
-        HBox actions = new HBox(9, refresh, catalog, receive);
+        HBox actions = actionRow(9, refresh, catalog, receive);
         actions.setAlignment(Pos.CENTER_RIGHT);
         VBox heading = new VBox(4, title, subtitle);
         HBox header = bar(heading, actions);
@@ -89,8 +91,6 @@ final class StockView extends VBox {
         VBox.setVgrow(inventory, Priority.ALWAYS);
         if (retailer) {
             configureBatches();
-            inventory.setPrefHeight(285);
-            batches.setPrefHeight(185);
             getChildren().addAll(selection, batches);
             VBox.setVgrow(batches, Priority.ALWAYS);
             inventory.getSelectionModel().selectedItemProperty().addListener((ignored, old, line) -> showBatches(line));
@@ -99,7 +99,7 @@ final class StockView extends VBox {
     }
 
     private void configureInventory() {
-        inventory.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        inventory.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         inventory.setPlaceholder(new Label(retailer
                 ? "Add a product, then receive its first batch."
                 : "Add a catalog product, then receive its first stock."));
@@ -138,7 +138,7 @@ final class StockView extends VBox {
     }
 
     private void configureBatches() {
-        batches.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        batches.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         batches.setPlaceholder(new Label("Select a product to see its batches."));
         column(batches, "Batch", row -> "#" + row.id(), 75);
         column(batches, "Quantity", row -> amount(row.quantity()), 90);
@@ -252,9 +252,9 @@ final class StockView extends VBox {
     private Dialog<ButtonType> dialog(String title, ButtonType action) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
+        dialog.setResizable(true);
         dialog.setTitle(title);
         dialog.getDialogPane().setHeaderText(title);
-        dialog.getDialogPane().setPrefWidth(440);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CANCEL, action);
         return dialog;
     }

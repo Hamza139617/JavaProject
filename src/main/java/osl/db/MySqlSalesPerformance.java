@@ -21,7 +21,7 @@ import osl.bl.StockService.Unit;
 import osl.db.MySqlDatabase.WorkspaceLock;
 
 public final class MySqlSalesPerformance implements SalesPerformanceRepository {
-    private static final String FILTER = """
+    static final String FILTER = """
             WHERE s.business_id = ? AND s.sale_type = ? AND s.sold_at >= ? AND s.sold_at < ?
             """;
 
@@ -148,7 +148,7 @@ public final class MySqlSalesPerformance implements SalesPerformanceRepository {
         }
     }
 
-    private static void bind(PreparedStatement query, long business, String saleType, DateRange range)
+    static void bind(PreparedStatement query, long business, String saleType, DateRange range)
             throws SQLException {
         query.setLong(1, business);
         query.setString(2, saleType);
@@ -156,7 +156,7 @@ public final class MySqlSalesPerformance implements SalesPerformanceRepository {
         query.setObject(4, range.to().plusDays(1).atStartOfDay());
     }
 
-    private static Metrics metrics(ResultSet rows) throws SQLException {
+    static Metrics metrics(ResultSet rows) throws SQLException {
         return new Metrics(rows.getLong("sale_count"), rows.getBigDecimal("revenue"), rows.getBigDecimal("cost"));
     }
 

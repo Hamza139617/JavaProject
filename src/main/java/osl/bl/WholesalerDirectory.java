@@ -20,7 +20,8 @@ public final class WholesalerDirectory {
 
     public enum ReportReason {
         MISLEADING_DETAILS("Misleading details"), INCORRECT_RATE("Incorrect rate"),
-        INAPPROPRIATE_CONTENT("Inappropriate content"), OTHER("Other");
+        INAPPROPRIATE_CONTENT("Inappropriate content"), OTHER("Other"),
+        DANGEROUS_PRODUCT("Dangerous or prohibited product");
 
         private final String label;
         ReportReason(String label) { this.label = label; }
@@ -59,6 +60,11 @@ public final class WholesalerDirectory {
                 text(category, 80, "Category"), maxRate.isBlank() ? null : rate(maxRate),
                 sort == null ? Sort.NAME : sort);
         return repository.search(session, criteria);
+    }
+
+    public boolean hasPublishedProfiles(Session session) throws SQLException {
+        require(session, Role.RETAILER);
+        return repository.hasPublishedProfiles(session);
     }
 
     public Optional<PublicProfile> profile(Session session, long businessId) throws SQLException {

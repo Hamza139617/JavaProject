@@ -4,7 +4,6 @@ import static osl.ui.DirectoryControls.*;
 
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar.ButtonData;
 import javafx.scene.control.ButtonType;
@@ -14,11 +13,12 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.TilePane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
+import java.util.List;
 import java.util.function.Consumer;
 import osl.bl.AccountService.Session;
 import osl.bl.WholesalerDirectory;
@@ -29,6 +29,8 @@ import osl.bl.WholesalerDirectory.Sort;
 import osl.bl.WholesalerDirectory.Summary;
 
 final class WholesalerSearchView extends VBox {
+    private record Results(List<Summary> profiles, boolean directoryHasProfiles) {}
+
     private final WholesalerDirectory directory;
     private final Session session;
     private final Window owner;
@@ -38,13 +40,13 @@ final class WholesalerSearchView extends VBox {
     private final TextField category = new TextField();
     private final TextField maximumRate = new TextField();
     private final ComboBox<Sort> order = new ComboBox<>();
-    private final TilePane cards = new TilePane(12, 12);
+    private final GridPane cards = new GridPane();
     private final Label status = text("", "#53675e", 13, false);
     private final VBox catalogue = new VBox(12);
     private final VBox content = new VBox();
     private final Button searchButton;
 
-    WholesalerSearchView(WholesalerDirectory directory, Session session, Window owner, Runnable back,
+    WholesalerSearchView(WholesalerDirectory directory, Session session, Window owner, String backLabel, Runnable back,
                          Consumer<Boolean> busy) {
         this.directory = directory;
         this.session = session;
@@ -52,12 +54,12 @@ final class WholesalerSearchView extends VBox {
         this.busy = busy;
         setSpacing(16);
         setPadding(new Insets(22));
-        setStyle("-fx-background-color: #fcfdfb; -fx-background-radius: 19;");
-        var navigation = bar(button("Back to workspace", false, back), text("Wholesaler directory", "#1d604a", 14, true));
+        setStyle("-fx-background-color: #fcfdfb;");
+        var navigation = bar(button(backLabel, false, back), text("Wholesaler directory", "#1d604a", 14, true));
         getChildren().addAll(navigation, content);
         VBox.setVgrow(content, Priority.ALWAYS);
 
-        keyword.setPromptText("Business, username or stock type");
+        keyword.setPromptText("Business, @username or stock type");
         city.setPromptText("Any city");
         category.setPromptText("Any category");
         maximumRate.setPromptText("Any rate");
@@ -69,15 +71,20 @@ final class WholesalerSearchView extends VBox {
         category.setOnAction(event -> search());
         maximumRate.setOnAction(event -> search());
         var keywordField = field("Keyword", keyword);
-        HBox.setHgrow(keywordField, Priority.ALWAYS);
-        var searchRow = new HBox(10, keywordField, searchButton);
-        searchRow.setAlignment(Pos.BOTTOM_LEFT);
-        var filters = new HBox(10, field("City", city), field("Category", category),
+        var clear = button("Clear filters", false, () -> {
+            keyword.clear();
+            city.clear();
+            category.clear();
+            maximumRate.clear();
+            order.setValue(Sort.NAME);
+            search();
+        });
+        var searchRow = actionRow(10, keywordField, searchButton, clear);
+        var filters = actionRow(10, field("City", city), field("Category", category),
                 field("Maximum unit rate (PKR)", maximumRate), field("Sort", order));
-        for (var entry : filters.getChildren()) HBox.setHgrow(entry, Priority.ALWAYS);
 
-        cards.setPrefColumns(3);
-        cards.setTileAlignment(Pos.TOP_LEFT);
+        cards.setHgap(12);
+        cards.setVgap(12);
         cards.setPadding(new Insets(1, 8, 10, 1));
         var results = scroll(cards);
         VBox.setVgrow(results, Priority.ALWAYS);
@@ -96,11 +103,16 @@ final class WholesalerSearchView extends VBox {
         String rate = maximumRate.getText();
         Sort sort = order.getValue();
         boolean filtering = !(query.isBlank() && location.isBlank() && type.isBlank() && rate.isBlank());
-        run(() -> directory.search(session, query, location, type, rate, sort), profiles -> {
+        run(() -> {
+            var profiles = directory.search(session, query, location, type, rate, sort);
+            return new Results(profiles, !profiles.isEmpty() || (filtering && directory.hasPublishedProfiles(session)));
+        }, results -> {
+            var profiles = results.profiles();
             catalogue.setDisable(false);
-            cards.getChildren().setAll(profiles.stream().map(this::card).toList());
+            showCards(profiles);
             String summary = profiles.isEmpty()
-                    ? (filtering ? "No wholesalers match these filters." : "No wholesalers have published a profile yet.")
+                    ? (results.directoryHasProfiles() ? "No wholesalers match these filters. Clear filters to browse the directory."
+                       : "No public wholesaler profiles yet. A wholesaler must publish a profile before retailers can find it.")
                     : profiles.size() + (profiles.size() == 1 ? " wholesaler found" : " wholesalers found");
             message(status, summary, false);
         }, failure -> {
@@ -108,6 +120,20 @@ final class WholesalerSearchView extends VBox {
             cards.getChildren().clear();
             message(status, error("Could not load wholesalers.", failure), true);
         });
+    }
+
+    private void showCards(List<Summary> profiles) {
+        cards.getChildren().clear();
+        cards.getColumnConstraints().clear();
+        int columns = Math.min(3, profiles.size());
+        for (int i = 0; i < columns; i++) {
+            var column = new ColumnConstraints();
+            column.setPercentWidth(100.0 / columns);
+            cards.getColumnConstraints().add(column);
+        }
+        for (int i = 0; i < profiles.size(); i++) {
+            cards.add(card(profiles.get(i)), i % columns, i / columns);
+        }
     }
 
     private VBox card(Summary summary) {
@@ -118,12 +144,12 @@ final class WholesalerSearchView extends VBox {
         var offered = text(summary.matchingListings() + (summary.matchingListings() == 1 ? " stock type" : " stock types"),
                 "#53675e", 13, false);
         var facts = summary.lowestRate() == null ? offered
-                : bar(offered, text("From " + money(summary.lowestRate()), "#1d604a", 13, true));
+                : new VBox(4, offered, text("From " + money(summary.lowestRate()), "#1d604a", 13, true));
         var tile = new VBox(7, name, identity);
         if (!description.isBlank()) tile.getChildren().add(text(description, "#53675e", 13, false));
-        tile.getChildren().addAll(facts, button("View profile", false, () -> open(summary.businessId())));
-        tile.setPrefWidth(275);
-        tile.setMaxWidth(275);
+        var view = button("View profile", false, () -> open(summary.businessId()));
+        view.setMaxWidth(Double.MAX_VALUE);
+        tile.getChildren().addAll(facts, view);
         tile.setPadding(new Insets(14));
         tile.setStyle("-fx-background-color: #f2f7f4; -fx-border-color: #d4e5dc;"
                 + "-fx-border-radius: 11; -fx-background-radius: 11;");
@@ -158,9 +184,8 @@ final class WholesalerSearchView extends VBox {
         overview.getChildren().add(text("Profile updated " + updated(profile.updatedAt()), "#53675e", 12, false));
 
         var listings = new TableView<PublicListing>();
-        listings.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        listings.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         listings.setPlaceholder(new Label("This wholesaler has not published any stock types."));
-        listings.setPrefHeight(275);
         column(listings, "Stock type", PublicListing::product, 150);
         column(listings, "Category", PublicListing::category, 125);
         column(listings, "Unit", row -> row.unit().toString(), 70);
@@ -169,13 +194,14 @@ final class WholesalerSearchView extends VBox {
         listings.getItems().setAll(profile.listings());
 
         Label feedback = text("", "#53675e", 13, false);
-        Button report = button("Report selected listing", false,
+        Button report = button("Report wholesaler", false,
                 () -> report(profile, listings.getSelectionModel().getSelectedItem(), feedback));
-        report.disableProperty().bind(listings.getSelectionModel().selectedItemProperty().isNull());
+        report.setDisable(profile.listings().isEmpty());
         var publicDetails = new VBox(10, button("Back to results", false, () -> {
             content.getChildren().setAll(catalogue);
             search();
         }), overview, bar(text("Listed stock types", "#19332a", 19, true), report), listings, feedback);
+        VBox.setVgrow(listings, Priority.ALWAYS);
         var page = scroll(publicDetails);
         VBox.setVgrow(page, Priority.ALWAYS);
         content.getChildren().setAll(page);
@@ -185,8 +211,19 @@ final class WholesalerSearchView extends VBox {
         var send = new ButtonType("Submit report", ButtonData.OK_DONE);
         var dialog = new Dialog<ButtonType>();
         dialog.initOwner(owner);
-        dialog.setTitle("Report a listing");
-        dialog.setHeaderText(listing.product() + " · " + profile.businessName());
+        dialog.setResizable(true);
+        dialog.setTitle("Report wholesaler");
+                dialog.setHeaderText(profile.businessName() + " · @" + profile.username());
+        var evidence = new ComboBox<PublicListing>();
+        evidence.getItems().setAll(profile.listings());
+        evidence.setPromptText("Select the listing to include");
+        evidence.setValue(listing);
+        evidence.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(PublicListing row) {
+                return row == null ? "" : row.product() + " · " + row.category() + " · " + money(row.rate());
+            }
+            @Override public PublicListing fromString(String value) { return null; }
+        });
         var reason = new ComboBox<ReportReason>();
         reason.getItems().setAll(ReportReason.values());
         reason.setPromptText("Select a reason");
@@ -196,25 +233,29 @@ final class WholesalerSearchView extends VBox {
         comments.setPrefRowCount(3);
         var status = text("", "#963b2c", 13, false);
         var pane = dialog.getDialogPane();
-        pane.setContent(new VBox(10, field("Reason", reason), field("Comments", comments), status));
-        pane.setPrefWidth(400);
+        pane.setContent(new VBox(10, field("Listing evidence", evidence), field("Reason", reason), field("Comments", comments), status));
         pane.getButtonTypes().addAll(send, ButtonType.CANCEL);
         pane.lookupButton(send).addEventFilter(ActionEvent.ACTION, event -> {
             event.consume();
+            PublicListing product = evidence.getValue();
+            if (product == null) {
+                message(status, "Choose the listing that prompted your report.", true);
+                return;
+            }
             ReportReason selected = reason.getValue();
             String note = comments.getText();
             pane.setDisable(true);
             dialog.setOnCloseRequest(close -> close.consume());
             busy.accept(true);
             run(() -> {
-                directory.report(session, profile.businessId(), listing.productId(), selected, note);
+                directory.report(session, profile.businessId(), product.productId(), selected, note);
                 return null;
             }, saved -> {
                 busy.accept(false);
                 dialog.setOnCloseRequest(null);
                 pane.setDisable(false);
                 dialog.close();
-                message(feedback, "Report sent for administrator review.", false);
+                message(feedback, "Wholesaler report sent for administrator review.", false);
             }, failure -> {
                 busy.accept(false);
                 dialog.setOnCloseRequest(null);

@@ -39,7 +39,11 @@ public final class SalesService {
         LocalDateTime soldAt();
     }
 
-    public record RetailOrder(LocalDateTime soldAt, List<RetailItem> items) implements Order {
+    public record RetailOrder(LocalDateTime soldAt, List<RetailItem> items, Long customerId) implements Order {
+        public RetailOrder(LocalDateTime soldAt, List<RetailItem> items) {
+            this(soldAt, items, null);
+        }
+
         public RetailOrder {
             items = List.copyOf(items);
         }
@@ -198,6 +202,9 @@ public final class SalesService {
             }
             price(wholesale.price().toPlainString());
         } else if (order instanceof RetailOrder retail) {
+            if (retail.customerId() != null && retail.customerId() <= 0) {
+                throw new SaleException("Choose a valid customer or leave the sale as walk-in.");
+            }
             if (retail.items().isEmpty()) {
                 throw new SaleException("Add at least one product to the sale.");
             }

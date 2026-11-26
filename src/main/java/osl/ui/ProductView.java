@@ -21,7 +21,6 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
@@ -60,7 +59,7 @@ final class ProductView extends VBox {
         wholesale = session.role() == Role.WHOLESALER;
         setSpacing(13);
         setPadding(new Insets(22));
-        setStyle("-fx-background-color: #fcfdfb; -fx-background-radius: 19;");
+        setStyle("-fx-background-color: #fcfdfb;");
         add = button("Add product", true, () -> editor(null));
         edit = button("Edit selected", false, () -> editor(selected()));
         remove = button("Remove selected", false, () -> remove(selected()));
@@ -72,12 +71,11 @@ final class ProductView extends VBox {
                 : "Manage the items and prices offered to your buyers.";
         search.setPromptText("Find products by name or category");
         search.setAccessibleText("Filter products by name or category");
-        HBox.setHgrow(search, Priority.ALWAYS);
-        var filter = new HBox(10, search, archived, button("Refresh", false, () -> reload(0, "")));
+        var filter = actionRow(10, search, archived, button("Refresh", false, () -> reload(0, "")));
         filter.setAlignment(Pos.CENTER_LEFT);
         configureTable();
         getChildren().addAll(top, title, text(description, "#53675e", 14, false), filter, status, table,
-                new HBox(9, edit, remove, restore));
+                actionRow(9, edit, remove, restore));
         VBox.setVgrow(table, Priority.ALWAYS);
         search.textProperty().addListener((observable, old, value) -> filter());
         archived.selectedProperty().addListener((observable, old, value) -> filter());
@@ -87,7 +85,7 @@ final class ProductView extends VBox {
     }
 
     private void configureTable() {
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         table.setPlaceholder(new Label("Add a product to start your catalog."));
         column(table, "Product", ProductRow::name, 175);
         column(table, "Category", row -> row.category() == null ? "—" : row.category(), 135);
@@ -138,6 +136,7 @@ final class ProductView extends VBox {
         ButtonType save = new ButtonType("Save product", ButtonData.OK_DONE);
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
+        dialog.setResizable(true);
         dialog.setTitle(row == null ? "Add product" : "Edit product");
         dialog.setHeaderText(row == null ? "New catalog product" : row.name());
 
@@ -166,7 +165,6 @@ final class ProductView extends VBox {
         if (wholesale) fields.getChildren().add(listed);
         fields.getChildren().add(error);
         var pane = dialog.getDialogPane();
-        pane.setPrefWidth(430);
         pane.setContent(fields);
         pane.getButtonTypes().addAll(ButtonType.CANCEL, save);
         pane.lookupButton(save).addEventFilter(ActionEvent.ACTION, event -> {

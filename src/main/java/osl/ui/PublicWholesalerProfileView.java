@@ -9,7 +9,6 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import osl.bl.AccountService.Session;
@@ -36,7 +35,7 @@ final class PublicWholesalerProfileView extends VBox {
         this.busy = busy;
         setPadding(new Insets(22));
         setSpacing(14);
-        setStyle("-fx-background-color: #fcfdfb; -fx-background-radius: 19;");
+        setStyle("-fx-background-color: #fcfdfb;");
         form = profileForm();
         retry = button("Reload profile", false, this::load);
         var pane = scroll(form);
@@ -57,11 +56,13 @@ final class PublicWholesalerProfileView extends VBox {
                 "#1d604a", 15, true);
         var guidance = text("Publishing makes this identity, your public location, and your listed stock types visible to retailers.",
                 "#53675e", 13, false);
-        var locations = new HBox(12, field("City", city), field("Public address (optional)", address));
-        HBox.setHgrow(locations.getChildren().getLast(), Priority.ALWAYS);
-        var fields = new VBox(12, identity, guidance, locations, field("About the business (optional)", about),
-                phone, published, button("Save profile", true, this::saveProfile));
-        fields.setPadding(new Insets(14, 10, 12, 1));
+        var locations = actionRow(12, field("City", city), field("Public address (optional)", address));
+        var description = field("About the business (optional)", about);
+        VBox.setVgrow(description, Priority.ALWAYS);
+        var save = button("Save profile", true, this::saveProfile);
+        save.setMaxWidth(Double.MAX_VALUE);
+        var fields = new VBox(12, identity, guidance, locations, description, phone, published, save);
+        fields.setPadding(new Insets(14, 0, 0, 0));
         return fields;
     }
 

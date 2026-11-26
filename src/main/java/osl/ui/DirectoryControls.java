@@ -73,7 +73,19 @@ final class DirectoryControls {
         Label label = new Label(title);
         label.setLabelFor(control);
         control.setMaxWidth(Double.MAX_VALUE);
-        return new VBox(4, label, control);
+        VBox field = new VBox(4, label, control);
+        VBox.setVgrow(control, Priority.ALWAYS);
+        return field;
+    }
+
+    static HBox actionRow(double spacing, Region... items) {
+        HBox row = new HBox(spacing, items);
+        row.setAlignment(Pos.BOTTOM_LEFT);
+        for (Region item : items) {
+            item.setMaxWidth(Double.MAX_VALUE);
+            HBox.setHgrow(item, Priority.ALWAYS);
+        }
+        return row;
     }
 
     static HBox bar(Node left, Node right) {
@@ -87,6 +99,7 @@ final class DirectoryControls {
     static ScrollPane scroll(Node content) {
         var pane = new ScrollPane(content);
         pane.setFitToWidth(true);
+        pane.setFitToHeight(true);
         pane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         pane.setStyle("-fx-background: #fcfdfb; -fx-background-color: transparent;");
         return pane;

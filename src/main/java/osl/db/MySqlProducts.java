@@ -22,7 +22,8 @@ public final class MySqlProducts implements ProductRepository {
             SELECT p.product_id, p.product_name, p.category, p.unit, p.selling_price, p.requires_expiry,
                    p.archived_at IS NOT NULL AS archived, COALESCE(l.is_listed, FALSE) AS listed,
                    (l.product_id IS NOT NULL OR EXISTS
-                       (SELECT 1 FROM stock_lots s WHERE s.product_id = p.product_id)) AS has_history
+                       (SELECT 1 FROM stock_lots s WHERE s.product_id = p.product_id) OR EXISTS
+                       (SELECT 1 FROM replenishment_plans r WHERE r.product_id = p.product_id)) AS has_history
             FROM products p LEFT JOIN wholesaler_listings l ON l.product_id = p.product_id
             WHERE p.business_id = ?
             """;
@@ -74,7 +75,7 @@ public final class MySqlProducts implements ProductRepository {
         ProductRow current = owned(connection, business, id);
         if (current.archived()) throw new ProductException("Restore this product before editing it.");
         if (current.unitLocked() && current.unit() != details.unit()) {
-            throw new ProductException("The unit is fixed once this product has stock or listing history.");
+            throw new ProductException("The unit is fixed once this product has stock, listing, or replenishment history.");
         }
         try (var query = connection.prepareStatement("""
                 UPDATE products SET product_name = ?, category = ?, unit = ?, selling_price = ?, requires_expiry = ?
