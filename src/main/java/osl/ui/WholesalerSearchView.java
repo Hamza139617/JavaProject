@@ -54,7 +54,6 @@ final class WholesalerSearchView extends VBox {
         this.busy = busy;
         setSpacing(16);
         setPadding(new Insets(22));
-        setStyle("-fx-background-color: #fcfdfb;");
         var navigation = bar(button(backLabel, false, back), text("Wholesaler directory", "#1d604a", 14, true));
         getChildren().addAll(navigation, content);
         VBox.setVgrow(content, Priority.ALWAYS);

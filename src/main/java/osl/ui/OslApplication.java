@@ -2,8 +2,10 @@ package osl.ui;
 
 import java.sql.SQLException;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
+import java.util.function.LongFunction;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Application;
@@ -59,6 +61,9 @@ import osl.db.MySqlSalesPerformance;
 import osl.db.MySqlStock;
 import osl.db.MySqlWholesalerAdministration;
 import osl.db.MySqlWholesalerDirectory;
+import osl.ui.WorkspaceDashboard.Action;
+import osl.ui.WorkspaceDashboard.AlertRow;
+import osl.ui.WorkspaceDashboard.Section;
 
 public class OslApplication extends Application {
     private static final String INPUT_STYLE = "-fx-background-radius: 8; -fx-border-radius: 8;"
@@ -118,7 +123,9 @@ public class OslApplication extends Application {
         root = new StackPane(accountCard);
         root.setStyle("-fx-background-color: #edf4ef; -fx-font-family: 'Segoe UI'; -fx-font-size: 14px;");
         stage.setTitle("Omni Sales Logistics Engine");
-        stage.setScene(new Scene(root));
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(WorkspaceTheme.STYLESHEET);
+        stage.setScene(scene);
         stage.setMinWidth(780);
         stage.setMinHeight(560);
         stage.setOnCloseRequest(event -> {
@@ -215,68 +222,79 @@ public class OslApplication extends Application {
     }
 
     private void showDashboard(String message) {
-        String heading = switch (session.role()) {
-            case RETAILER -> "Retailer workspace";
-            case WHOLESALER -> "Wholesaler workspace";
-            case ADMINISTRATOR -> "Administration";
-        };
-        String subtitle = session.businessName() == null ? session.fullName() : session.businessName();
-        Form form = new Form(heading, subtitle);
+        Session current = session;
+        if (current.role() == Role.ADMINISTRATOR) {
+            showAdministrationDashboard(message);
+            return;
+        }
+
+        var inventoryActions = new Section("Inventory", List.of(
+                new Action("Manage products", () -> showProducts("Back to workspace", () -> showDashboard(null))),
+                new Action("Manage stock", this::showStock),
+                new Action("Track inventory", this::showInventory),
+                new Action("Replenish stock", this::showReplenishment)));
+        var salesActions = new Section("Sales and insights", List.of(
+                new Action("Sales performance", this::showSalesPerformance),
+                new Action("Profit trends", this::showProfitTrends)));
+        boolean retailer = current.role() == Role.RETAILER;
+        var relationships = retailer ? new Section("Customers and suppliers", List.of(
+                new Action("Customer relationships", this::showCustomerRelationships),
+                new Action("Search wholesalers", this::showWholesalers)))
+                : new Section("Wholesale directory", List.of(
+                        new Action("Public wholesaler profile", this::showPublicProfile)));
+
+        var stock = new AlertRow("Low stock", this::showReplenishment);
+        var reports = new AlertRow("Report updates", this::showReportReview);
+        var dashboard = new WorkspaceDashboard(current, message,
+                List.of(inventoryActions, salesActions, relationships), retailer ? List.of(stock, reports) : List.of(stock),
+                this::showSale, this::showProfile, () -> showLogin("", "", false));
+        watchDashboard(dashboard, current, Duration.seconds(45), stock,
+                () -> replenishment.load(current).unreadNotices(), count -> count == 0 ? "No unread low-stock notices."
+                        : count + (count == 1 ? " unread low-stock notice." : " unread low-stock notices."));
+        if (retailer) {
+            watchDashboard(dashboard, current, Duration.seconds(30), reports,
+                    () -> reportedContent.notices(current).stream().filter(ReportReview.Notice::unread).count(),
+                    count -> count == 0 ? "No unread report updates."
+                            : count + (count == 1 ? " unread report update." : " unread report updates."));
+        }
+        ScrollPane pane = workspaceScroll(dashboard);
+        pane.setFitToHeight(false);
+        root.getChildren().setAll(pane);
+    }
+
+    private void showAdministrationDashboard(String message) {
+        Form form = new Form("Administration", session.fullName());
         form.body.getChildren().add(label("Signed in as " + session.username(), "#53675e", 14, false));
-        if (session.role() != Role.ADMINISTRATOR) {
-            Button catalog = primary("Manage products");
-            catalog.setOnAction(event -> showProducts("Back to workspace", () -> showDashboard(null)));
-            form.body.getChildren().add(catalog);
-            Button stock = primary("Manage stock");
-            stock.setOnAction(event -> showStock());
-            Button track = primary("Track inventory");
-            track.setOnAction(event -> showInventory());
-            form.body.getChildren().addAll(stock, track);
-            Button sale = primary("Record sale");
-            sale.setOnAction(event -> showSale());
-            form.body.getChildren().add(sale);
-            Button analysis = primary("Sales performance");
-            analysis.setOnAction(event -> showSalesPerformance());
-            form.body.getChildren().add(analysis);
-            Button trends = primary("Profit trends");
-            trends.setOnAction(event -> showProfitTrends());
-            form.body.getChildren().add(trends);
-            Button replenish = primary("Replenish stock");
-            replenish.setOnAction(event -> showReplenishment());
-            Label lowNotices = label("", "#286049", 13, false);
-            lowNotices.setManaged(false);
-            lowNotices.setVisible(false);
-            form.body.getChildren().addAll(replenish, lowNotices);
-            watchReplenishment(form.body, lowNotices, session);
-        }
-        if (session.role() == Role.RETAILER) {
-            Button relationships = primary("Customer relationships");
-            relationships.setOnAction(event -> showCustomerRelationships());
-            form.body.getChildren().add(relationships);
-            Button search = primary("Search wholesalers");
-            search.setOnAction(event -> showWholesalers());
-            Button reportUpdates = primary("Report updates");
-            reportUpdates.setOnAction(event -> showReportReview());
-            form.body.getChildren().addAll(search, reportUpdates);
-            watchReportUpdates(form.body, reportUpdates, session);
-        } else if (session.role() == Role.WHOLESALER) {
-            Button publicProfile = primary("Public wholesaler profile");
-            publicProfile.setOnAction(event -> showPublicProfile());
-            form.body.getChildren().addAll(publicProfile,
-                    label("Publish your public profile to appear in retailer searches.", "#53675e", 13, false));
-        }
-        if (session.role() == Role.ADMINISTRATOR) {
-            Button administer = primary("Manage wholesaler accounts");
-            administer.setOnAction(event -> showWholesalerAdministration());
-            Button review = primary("Review reported content");
-            review.setOnAction(event -> showReportReview());
-            form.body.getChildren().addAll(administer, review);
-        }
+        Button administer = primary("Manage wholesaler accounts");
+        administer.setOnAction(event -> showWholesalerAdministration());
+        Button review = primary("Review reported content");
+        review.setOnAction(event -> showReportReview());
         Button edit = primary("Edit profile");
         edit.setOnAction(event -> showProfile());
-        form.body.getChildren().addAll(edit, link("Sign out", () -> showLogin("", "", false)));
+        form.body.getChildren().addAll(administer, review, edit, link("Sign out", () -> showLogin("", "", false)));
+        form.body.setMaxWidth(620);
+        form.body.setMaxHeight(Region.USE_PREF_SIZE);
         form.message(message, false);
         showWorkspace(form.body);
+    }
+
+    private void watchDashboard(WorkspaceDashboard dashboard, Session current, Duration interval, AlertRow alert,
+                                Callable<Long> load, LongFunction<String> describe) {
+        Runnable query = () -> DirectoryControls.run(load, unread -> {
+            if (session == current && dashboard.getScene() != null) alert.update(unread, describe.apply(unread));
+        }, failure -> {
+            if (session == current && dashboard.getScene() != null) alert.unavailable();
+        });
+        Timeline refresh = new Timeline(new KeyFrame(interval, event -> query.run()));
+        refresh.setCycleCount(Timeline.INDEFINITE);
+        dashboard.sceneProperty().addListener((observable, previous, scene) -> {
+            if (scene == null) {
+                refresh.stop();
+            } else {
+                query.run();
+                refresh.play();
+            }
+        });
     }
 
     private void checkCurrentAccount() {
@@ -298,23 +316,6 @@ public class OslApplication extends Application {
     private void showReportReview() {
         showWorkspace(new ReportReviewView(reportedContent, session,
                 () -> showDashboard(null), working -> busy = working));
-    }
-
-    private void watchReportUpdates(VBox body, Button updates, Session current) {
-        Runnable query = () -> DirectoryControls.run(() -> reportedContent.notices(current), notices -> {
-            if (session != current || body.getScene() == null) return;
-            long unread = notices.stream().filter(ReportReview.Notice::unread).count();
-            updates.setText(unread == 0 ? "Report updates" : "Report updates (" + unread + " new)");
-        }, failure -> {});
-        Timeline refresh = new Timeline(new KeyFrame(Duration.seconds(30), event -> query.run()));
-        refresh.setCycleCount(Timeline.INDEFINITE);
-        body.sceneProperty().addListener((observable, old, scene) -> {
-            if (scene == null) refresh.stop();
-            else {
-                query.run();
-                refresh.play();
-            }
-        });
     }
 
     private void showWholesalerAdministration() {
@@ -353,27 +354,6 @@ public class OslApplication extends Application {
     private void showReplenishment() {
         showWorkspace(new ReplenishmentView(replenishment, session, stage, () -> showDashboard(null),
                 () -> showWholesalers("Back to replenishment", this::showReplenishment), working -> busy = working));
-    }
-
-    private void watchReplenishment(VBox body, Label notice, Session current) {
-        Runnable query = () -> DirectoryControls.run(() -> replenishment.load(current), board -> {
-            if (session != current || body.getScene() == null) return;
-            long unread = board.unreadNotices();
-            notice.setText(unread == 0 ? ""
-                    : unread + (unread == 1 ? " unread low-stock notice" : " unread low-stock notices"));
-            notice.setVisible(unread != 0);
-            notice.setManaged(unread != 0);
-        }, failure -> {});
-        Timeline reminders = new Timeline(new KeyFrame(Duration.seconds(45), event -> query.run()));
-        reminders.setCycleCount(Timeline.INDEFINITE);
-        body.sceneProperty().addListener((observable, old, scene) -> {
-            if (scene == null) {
-                reminders.stop();
-            } else {
-                query.run();
-                reminders.play();
-            }
-        });
     }
 
     private void showWholesalers() {
@@ -422,6 +402,8 @@ public class OslApplication extends Application {
                     failure -> form.message(DatabaseMessages.describe("Could not save the profile.", failure), true));
         });
         form.body.getChildren().addAll(submit, link("Cancel changes", () -> showDashboard(null)));
+        form.body.setMaxWidth(620);
+        form.body.setMaxHeight(Region.USE_PREF_SIZE);
         showWorkspace(form.body);
     }
 
@@ -466,10 +448,21 @@ public class OslApplication extends Application {
         content.setVvalue(0);
     }
 
-    private void showWorkspace(Node view) {
-        var pane = DirectoryControls.scroll(view);
-        pane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        root.getChildren().setAll(pane);
+    private void showWorkspace(Region view) {
+        view.getStyleClass().add("module-surface");
+        if (view.getMaxWidth() == Region.USE_COMPUTED_SIZE) view.setMaxWidth(1380);
+        StackPane frame = new StackPane(view);
+        frame.setAlignment(Pos.TOP_CENTER);
+        frame.getStyleClass().add("module-frame");
+        root.getChildren().setAll(workspaceScroll(frame));
+    }
+
+    private static ScrollPane workspaceScroll(Region content) {
+        var pane = new ScrollPane(content);
+        pane.setFitToWidth(true);
+        pane.setFitToHeight(true);
+        pane.getStyleClass().add("workspace-scroll");
+        return pane;
     }
 
     private static Label label(String text, String color, int size, boolean bold) {
@@ -485,8 +478,7 @@ public class OslApplication extends Application {
         button.setDefaultButton(true);
         button.setMaxWidth(Double.MAX_VALUE);
         button.setMinHeight(43);
-        button.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(button, Priority.ALWAYS);
+        button.setMaxHeight(Region.USE_PREF_SIZE);
         button.setStyle("-fx-background-color: #1d604a; -fx-background-radius: 9;"
                 + "-fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
         return button;

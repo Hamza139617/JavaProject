@@ -62,7 +62,6 @@ final class ReplenishmentView extends VBox {
         retailer = session.role() == Role.RETAILER;
         setPadding(new Insets(21));
         setSpacing(12);
-        setStyle("-fx-background-color: #fcfdfb;");
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getTabs().addAll(new Tab(retailer ? "Low-stock items" : "Low wholesale stocks", candidatePane()),
                 new Tab("Replenishment plans", planPane()));

@@ -75,7 +75,6 @@ final class ProfitTrendsView extends VBox {
     ProfitTrendsView(ProfitTrendsService service, Session session, Runnable back) {
         this.service = service;
         this.session = session;
-        setStyle("-fx-background-color: #fcfdfb;");
         setSpacing(11);
         setPadding(new Insets(20));
         var title = text("Profit trends", "#19332a", 30, true);

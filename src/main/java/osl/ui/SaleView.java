@@ -91,7 +91,6 @@ final class SaleView extends VBox {
         this.setBusy = setBusy;
         setSpacing(12);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #fcfdfb;");
         Label title = new Label("Record sale");
         title.setStyle("-fx-text-fill: #19332a; -fx-font-size: 30px; -fx-font-weight: bold;");
         Label subtitle = new Label(retail() ? "Add the products sold and their quantities."
@@ -99,7 +98,11 @@ final class SaleView extends VBox {
         subtitle.setWrapText(true);
         subtitle.setStyle("-fx-text-fill: #53675e;");
         status.setWrapText(true);
+        status.visibleProperty().bind(status.textProperty().isNotEmpty());
+        status.managedProperty().bind(status.visibleProperty());
         stockDetails.setWrapText(true);
+        stockDetails.visibleProperty().bind(stockDetails.textProperty().isNotEmpty());
+        stockDetails.managedProperty().bind(stockDetails.visibleProperty());
         stockDetails.setStyle("-fx-text-fill: #53675e;");
         resetTime();
         time.setPromptText("HH:mm or HH:mm:ss");
@@ -116,32 +119,31 @@ final class SaleView extends VBox {
             }
         });
         HBox schedule = actionRow(10, field("Sale date", date), field("Sale time", time));
-        Label payment = new Label("Payment: Cash");
+        Label payment = new Label("Cash payment");
         payment.setStyle("-fx-text-fill: #53675e; -fx-padding: 5 0;");
         getChildren().addAll(bar(button("Back to workspace", false, back), new Label(session.businessName())),
                 bar(new VBox(2, title, subtitle), button("Refresh stock", false, () -> load(""))),
-                status, schedule);
+                status);
         if (retail()) {
             customer.getItems().setAll(List.of(Contact.WALK_IN));
             customer.setValue(Contact.WALK_IN);
             var customerField = field("Customer (optional)", customer);
             HBox.setHgrow(customerField, Priority.ALWAYS);
             schedule.getChildren().add(customerField);
-            configureRetail();
+            getChildren().add(section("Sale details", schedule));
+            getChildren().add(configureRetail());
         } else {
             buyer.setPromptText("Name of the retailer who bought this stock");
             var stockAndPrice = actionRow(10, field("Wholesale stock", choices), field("Total sale price (PKR)", price));
             var retailer = field("Retailer name", buyer);
-            VBox.setVgrow(schedule, Priority.ALWAYS);
-            VBox.setVgrow(stockAndPrice, Priority.ALWAYS);
-            VBox.setVgrow(retailer, Priority.ALWAYS);
-            getChildren().addAll(stockAndPrice, stockDetails, retailer);
+            getChildren().addAll(section("Sale details", schedule, retailer),
+                    section("Stock and price", stockAndPrice, stockDetails));
         }
-        getChildren().add(actionRow(10, payment, button("Review sale", true, this::review)));
+        getChildren().add(bar(payment, button("Review sale", true, this::review)));
         load("");
     }
 
-    private void configureRetail() {
+    private VBox configureRetail() {
         cart.setPlaceholder(new Label("Add a product to start the sale."));
         cart.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         cart.setMinHeight(90);
@@ -161,7 +163,16 @@ final class SaleView extends VBox {
         });
         remove.disableProperty().bind(cart.getSelectionModel().selectedItemProperty().isNull());
         total.setStyle("-fx-font-weight: bold; -fx-text-fill: #19332a;");
-        getChildren().addAll(fields, stockDetails, cart, bar(remove, total));
+        VBox items = section("Items in this sale", fields, stockDetails, cart, bar(remove, total));
+        VBox.setVgrow(items, Priority.ALWAYS);
+        return items;
+    }
+
+    private static VBox section(String title, Node... fields) {
+        VBox panel = new VBox(9, DirectoryControls.text(title, "#19362e", 16, true));
+        panel.getStyleClass().add("sale-section");
+        panel.getChildren().addAll(fields);
+        return panel;
     }
 
     private void addItem() {

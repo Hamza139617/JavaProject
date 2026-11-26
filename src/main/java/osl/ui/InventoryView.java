@@ -72,7 +72,6 @@ final class InventoryView extends VBox {
 
         setSpacing(14);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #fcfdfb;");
         Label company = text(session.businessName(), "#3d6556", 14, true);
         Label heading = text("Track inventory", "#173d2e", 30, true);
         Label description = text(retailer ? "Find and update the storage position of each item in your shop."

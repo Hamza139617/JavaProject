@@ -66,7 +66,6 @@ final class StockView extends VBox {
         retailer = session.role() == Role.RETAILER;
         setSpacing(14);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #fcfdfb;");
 
         Button backButton = button("Back to workspace", false, back);
         Label business = new Label(session.businessName());

@@ -59,7 +59,6 @@ final class ProductView extends VBox {
         wholesale = session.role() == Role.WHOLESALER;
         setSpacing(13);
         setPadding(new Insets(22));
-        setStyle("-fx-background-color: #fcfdfb;");
         add = button("Add product", true, () -> editor(null));
         edit = button("Edit selected", false, () -> editor(selected()));
         remove = button("Remove selected", false, () -> remove(selected()));

@@ -36,7 +36,6 @@ final class ReportReviewView extends VBox {
         this.busy = busy;
         setSpacing(12);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #fcfdfb;");
         boolean admin = session.role() == Role.ADMINISTRATOR;
         getChildren().addAll(bar(button(admin ? "Back to administration" : "Back to workspace", false, back),
                 text(session.username(), "#3d6556", 14, true)),

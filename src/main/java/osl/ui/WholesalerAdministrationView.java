@@ -66,7 +66,6 @@ final class WholesalerAdministrationView extends VBox {
         this.setBusy = setBusy;
         setSpacing(14);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #fcfdfb;");
 
         Label heading = text("Manage wholesaler accounts", "#173d2e", 30, true);
         Label user = text("Signed in as " + session.username(), "#3d6556", 14, true);

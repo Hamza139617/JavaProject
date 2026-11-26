@@ -74,7 +74,6 @@ final class SalesPerformanceView extends VBox {
         this.service = service;
         this.session = session;
         retail = session.role() == Role.RETAILER;
-        setStyle("-fx-background-color: #fcfdfb;");
         setSpacing(12);
         setPadding(new Insets(20));
         var title = text("Sales performance", "#19332a", 30, true);

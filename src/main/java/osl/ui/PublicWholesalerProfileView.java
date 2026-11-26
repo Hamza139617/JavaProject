@@ -35,7 +35,6 @@ final class PublicWholesalerProfileView extends VBox {
         this.busy = busy;
         setPadding(new Insets(22));
         setSpacing(14);
-        setStyle("-fx-background-color: #fcfdfb;");
         form = profileForm();
         retry = button("Reload profile", false, this::load);
         var pane = scroll(form);
